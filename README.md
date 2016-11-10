@@ -1,2 +1,2 @@
-# libmbr
-Implementation for minumum bandwidth regenerating code.
+# libmsr
+Implementation for minumum storage regenerating code.
