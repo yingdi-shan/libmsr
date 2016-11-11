@@ -2,12 +2,23 @@
 // Created by syd on 16-11-1.
 //
 
-#ifndef LIBMBR_MSR_H
-#define LIBMBR_MSR_H
+#ifndef MSR_H
+#define MSR_H
 
-int msr_encode(uint8_t *input,uint32_t data_size,uint8_t **output,int n,int k);
-int msr_decode(uint8_t **data, uint32_t data_size, uint8_t **output_data,int n, int k);
-int msr_regenerate(char *data);
+uint32_t _pow(uint32_t a, int b);
+
+/**@brief Fill the unavailable data.
+ * @param len Length of each block of data.
+ * @param n The number of total blocks.
+ * @param k The number of systematic blocks.
+ * @param data Array of pointers to data buffer. If the pointer is NULL,the corresponding data will be generated.
+ * @param memory_allocated Array of pointers to the pre-allocated memory.
+ * @returns none
+ */
+void msr_encode(int len, int n, int k, uint8_t **data,uint8_t **memory_allocated);
 
 
-#endif //LIBMBR_MSR_H
+int msr_regenerate(int len, int n, int k, uint8_t **chunks, uint8_t *memory_allocated);
+
+
+#endif //MSR_H
