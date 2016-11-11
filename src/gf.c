@@ -3,6 +3,7 @@
 //
 
 #include <stdint.h>
+#include <assert.h>
 #include "gf.h"
 uint32_t GfPow[GF_SIZE << 1];
 uint32_t GfLog[GF_SIZE << 1];
@@ -45,5 +46,5 @@ uint8_t gf_div(uint32_t a, uint32_t b)
         }
         return 0;
     }
-    return GF_SIZE;
+    assert(0);
 }

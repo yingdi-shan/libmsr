@@ -13,7 +13,7 @@
 
 
 #define STRIPE_SIZE (_pow(q,t) * q * (t-1))
-#define DATA_SIZE (STRIPE_SIZE * 1 * 128)
+#define DATA_SIZE ((1 << 16) )
 
 int main(int argc, char **argv) {
     srand(time(0));
@@ -27,6 +27,8 @@ int main(int argc, char **argv) {
     int q = r;
     int t = n / q;
 
+    init(n,k);
+
 
     uint8_t *data[n] ;
     uint8_t *memory_pre_allocated[k];
@@ -36,8 +38,8 @@ int main(int argc, char **argv) {
 
     for(int i=0;i<k;i++) {
         data[i] = malloc(sizeof(uint8_t) * DATA_SIZE / k);
-        //for(int j=0;j<DATA_SIZE/k;j++)
-        //    data[i][j] = (0x00 + j) % 256;
+        for(int j=0;j<DATA_SIZE/k;j++)
+            //data[i][j] = rand() % 256;
         memset(data[i], 0xaa, sizeof(uint8_t) * DATA_SIZE / k);
     }
 
@@ -60,7 +62,7 @@ int main(int argc, char **argv) {
     int test_turn = 10;
 
     for (int i = 0; i < test_turn; i++) {
-        printf("Turn:%d\n", i);
+        printf("Turn %d:\n", i);
 
         uint8_t *input[n];
         for (int j = 0; j < n; j++)
@@ -85,10 +87,8 @@ int main(int argc, char **argv) {
 
         msr_encode(DATA_SIZE/k,n,k,input,memory_pre_allocated);
 
-
-
+/*
         for (int j = 0; j < n; j++) {
-
             printf("%d after repaired: ", j);
             for (int s = 0; s < _pow(q, t); s++) {
                 printf("%0x ", input[j][s]);
@@ -96,13 +96,18 @@ int main(int argc, char **argv) {
             printf("\n");
         }
 
+*/
+        for(int j=0;j<n;j++)
+            assert(!memcmp(input[j],data[j],DATA_SIZE/k));
+
+        printf("Check OK!\n");
+
         for(int i=0;i<r;i++) {
             free(memory_pre_allocated[i]);
         }
 
 
     }
-
 
     return 0;
 
