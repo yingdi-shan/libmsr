@@ -11,7 +11,7 @@
 #include <stdio.h>
 
 #define STRIPE_SIZE (_pow(q,t) * q * (t-1))
-#define DATA_SIZE ((1<<25))
+#define DATA_SIZE ((1<<27))
 
 int main(){
     gf_init();
@@ -33,9 +33,8 @@ int main(){
 
     for(int i=0;i<k;i++) {
         data[i] = malloc(sizeof(uint8_t) * DATA_SIZE / k);
-        //for(int j=0;j<DATA_SIZE/k;j++)
-        //    data[i][j] = (0x00 + j) % 256;
-        memset(data[i], 0x01, sizeof(uint8_t) * DATA_SIZE / k);
+
+        memset(data[i], 0xaa, sizeof(uint8_t) * DATA_SIZE / k);
     }
 
     for(int i=0;i<r;i++) {

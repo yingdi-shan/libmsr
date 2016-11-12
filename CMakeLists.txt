@@ -4,7 +4,7 @@ project(libmsr)
 set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -std=c99 -O3")
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
-add_library(msr src/mbr_encode.c src/msr_encode.c src/gf.c)
+add_library(msr src/mbr_encode.c src/gf.c src/msr_encode.c)
 
 set(TEST_FILES test/test.c)
 set(BENCHMARK_FILES test/benchmark.c)

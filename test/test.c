@@ -38,9 +38,9 @@ int main(int argc, char **argv) {
 
     for(int i=0;i<k;i++) {
         data[i] = malloc(sizeof(uint8_t) * DATA_SIZE / k);
-        //for(int j=0;j<DATA_SIZE/k;j++)
-            //data[i][j] = rand() % 256;
-        memset(data[i], 0xaa, sizeof(uint8_t) * DATA_SIZE / k);
+        for(int j=0;j<DATA_SIZE/k;j++)
+            data[i][j] = rand() % 256;
+        //memset(data[i], 0xaa, sizeof(uint8_t) * DATA_SIZE / k);
     }
 
     for(int i=0;i<r;i++) {
