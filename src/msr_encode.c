@@ -15,6 +15,53 @@
 #define MAX_NODE 16
 #define MAX_STRIPE 64
 
+#include <stdint.h>
+#include <assert.h>
+#include "gf.h"
+uint32_t GfPow[GF_SIZE << 1];
+uint32_t GfLog[GF_SIZE << 1];
+
+void gf_init(){
+
+    uint32_t i;
+
+    GfPow[0] = 1;
+    GfLog[0] = GF_SIZE;
+    for (i = 1; i < GF_SIZE; i++)
+    {
+        GfPow[i] = GfPow[i - 1] << 1;
+        if (GfPow[i] >= GF_SIZE)
+        {
+            GfPow[i] ^= GF_MOD;
+        }
+        GfPow[i + GF_SIZE - 1] = GfPow[i];
+        GfLog[GfPow[i] + GF_SIZE - 1] = GfLog[GfPow[i]] = i;
+    }
+}
+
+inline uint8_t gf_mul(uint32_t a, uint32_t b)
+{
+    if (a && b)
+    {
+        return GfPow[GfLog[a] + GfLog[b]];
+    }
+
+    return 0;
+}
+
+inline uint8_t gf_div(uint32_t a, uint32_t b)
+{
+    if (b)
+    {
+        if (a)
+        {
+            return GfPow[GF_SIZE - 1 + GfLog[a] - GfLog[b]];
+        }
+        return 0;
+    }
+    assert(0);
+}
+
 uint32_t _pow(uint32_t a, int b) {
     uint32_t ret = 1;
     for (int i = 1; i <= b; i++)
@@ -493,14 +540,16 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
     for (int z = 0; z < stripe_size; z++)
         sigmas[z] = compute_sigma(errors, error_cnt, q, t, z);
 
-    for (int block = 0; block < len / (stripe_size); block++) {
+    int block_count = len / stripe_size;
+
+    for (int block = 0; block < block_count; block++) {
 
 
         //Need to be optimized.
         for (int i = 0; i < n; i++)
             if (!is_error[i]) {
                 for (int j = 0; j < stripe_size; j++)
-                    data_buffer[i][j] = data[i][len / stripe_size * j + block];
+                    data_buffer[i][j] = data[i][block_count * j + block];
             }
 
 
