@@ -11,7 +11,7 @@
 #include <stdio.h>
 
 #define STRIPE_SIZE (_pow(q,t) * q * (t-1))
-#define DATA_SIZE ((1<<24))
+#define DATA_SIZE ((1<<25))
 
 int main(){
     gf_init();

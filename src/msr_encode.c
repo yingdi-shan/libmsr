@@ -160,6 +160,7 @@ compute_kappa(uint32_t stripe_size, uint8_t data_chunk[][stripe_size], int q, in
         if (!errors[i])
             minus_kappa[i - k] ^= data_chunk[i][z];
 
+
     for (int i = 0; i < k; i++) {
         int companion = node_companion[i][z];
 
@@ -171,11 +172,11 @@ compute_kappa(uint32_t stripe_size, uint8_t data_chunk[][stripe_size], int q, in
         }
     }
 
-    for (int i = k;i<k + error_cnt;i++){
+    for (int i = k; i < k + error_cnt; i++) {
         int companion = node_companion[i][z];
 
         if (i != companion && (!errors[companion] || !errors[i])) {
-            minus_kappa[i-k] ^= gf_mul(u,data_chunk[companion][z_companion[i][z]]);
+            minus_kappa[i - k] ^= gf_mul(u, data_chunk[companion][z_companion[i][z]]);
         }
     }
 
@@ -227,11 +228,124 @@ int compute_sigma(int *errors, int error_cnt, int q, int t, int z) {
     return sigma;
 }
 
+uint8_t data_buffer[MAX_NODE][MAX_STRIPE];
 
-void systematic_encode(uint32_t stripe_size, uint8_t data_chunk[][stripe_size], int q, int t) {
+void
+systematic_encode(uint32_t stripe_size, uint8_t data_chunk[][stripe_size], int *errors, int error_cnt, int q, int t) {
 
     int n = q * t;
+    int k = n - q;
+    int z_total = stripe_size;
+    int sigmas[z_total];
+    int sigma_max = 0;
+    for (int z = 0; z < z_total; z++) {
+        sigmas[z] = compute_sigma(errors, error_cnt, q, t, z);
 
+        if (sigmas[z] > sigma_max)
+            sigma_max = sigmas[z];
+    }
+
+    bool is_error[n];
+
+    memset(is_error, 0, sizeof(bool) * n);
+
+    for (int i = 0; i < error_cnt; i++)
+        is_error[errors[i]] = 1;
+
+    uint8_t a = gf_div(1, gf_mul(1 ^ u, 1 ^ u));
+    uint8_t b = gf_div(u, gf_mul(1 ^ u, 1 ^ u));
+
+    assert(a ^ gf_mul(b, u) == 1);
+    assert(b ^ gf_mul(a, u) == u);
+
+    int s = 0;
+    //memcpy(data_buffer,data_chunk,sizeof(data_buffer));
+
+    for (int i = 0; i < k; i++)
+        for (int j = 0; j < stripe_size; j++)
+            data_buffer[i][j] = data_chunk[i][j];
+
+
+    while (s <= sigma_max) {
+
+        //The construction of B.
+
+        for (int z = 0; z < z_total; z++)
+            if (sigmas[z] == s) {
+
+                for (int j = 0; j < k; j++) {
+
+                    int companion = node_companion[j][z];
+
+                    if (companion < j && !is_error[companion]) {
+                        int new_z = z_companion[j][z];
+
+                        uint8_t a_cur = data_chunk[j][z] ^
+                                        gf_mul(data_chunk[companion][new_z], u);
+
+                        uint8_t a_companion = gf_mul(data_chunk[u][z], u) ^
+                                              data_chunk[companion][new_z];
+
+
+                        data_buffer[j][z] = a_cur;
+                        data_buffer[companion][new_z] = a_companion;
+
+                    }
+                }
+
+            }
+
+
+        for (int z = 0; z < z_total; z++)
+            if (sigmas[z] == s) {
+                for (int j = 0; j < error_cnt; j++) {
+                    uint8_t res = 0;
+                    for (int i = 0; i < k; i++) {
+                        //printf("%d,%d:%0x\n",errors[j],i,theta[j][i]);
+                        res ^= gf_mul(theta[errors[j] - k][i], data_buffer[i][z]);
+                    }
+                    data_buffer[errors[j]][z] = res;
+                    //printf("%0x\n",res);
+                }
+            }
+
+
+        for (int z = 0; z < z_total; z++)
+            if (sigmas[z] == s) {
+
+                for (int j = 0; j < error_cnt; j++) {
+
+                    int error = errors[j];
+
+                    int companion = node_companion[error][z];
+                    int new_z = z_companion[error][z];
+
+
+                    if (companion < error && is_error[companion]) {
+
+
+                        uint8_t a_cur = gf_mul(data_buffer[error][z], a) ^
+                                        gf_mul(data_buffer[companion][new_z], b);
+
+                        uint8_t a_companion = gf_mul(data_buffer[error][z], b) ^
+                                              gf_mul(data_buffer[companion][new_z], a);
+
+
+                        data_buffer[error][z] = a_cur;
+                        data_buffer[companion][new_z] = a_companion;
+
+                    }
+                }
+
+            }
+
+
+        s++;
+    }
+
+    for (int i = 0; i < error_cnt; i++)
+        for (int j = 0; j < stripe_size; j++)
+            data_chunk[errors[i]][j] = data_buffer[errors[i]][j];
 
 
 }
@@ -241,7 +355,7 @@ int
 sequential_decode(uint32_t stripe_size, uint8_t data_chunk[][stripe_size], int *errors, int error_cnt, int q, int t) {
 
     //clock_t start = clock();
-
+    printf("Sequential Decode:\n");
     int n = q * t;
     int z_total = stripe_size;
     int sigmas[z_total];
@@ -294,41 +408,36 @@ sequential_decode(uint32_t stripe_size, uint8_t data_chunk[][stripe_size], int *
                     data_chunk[errors[j]][z] = kappa[j];
             }
 
-        char transformed[n][z_total];
-        memset(transformed, 0, sizeof(char) * n * z_total);
-
 
         for (int z = 0; z < z_total; z++)
             if (sigmas[z] == s) {
 
-                for (int j = 0; j < error_cnt; j++)
-                    if (!transformed[errors[j]][z]) {
+                for (int j = 0; j < error_cnt; j++) {
 
-                        int error = errors[j];
-
-
-                        int companion = node_companion[error][z];
-                        int new_z = z_companion[error][z];
+                    int error = errors[j];
 
 
-                        if (companion != error && is_error[companion]) {
+                    int companion = node_companion[error][z];
+                    int new_z = z_companion[error][z];
 
 
-                            //printf("%d %d\n",output_chunk[j][z],output_chunk[companion][permute(z, y, x, q, t)]);
-
-                            uint8_t a_cur = gf_mul(data_chunk[error][z], a) ^
-                                            gf_mul(data_chunk[companion][new_z], b);
-
-                            uint8_t a_companion = gf_mul(data_chunk[error][z], b) ^
-                                                  gf_mul(data_chunk[companion][new_z], a);
+                    if (companion < error && is_error[companion]) {
 
 
-                            data_chunk[error][z] = a_cur;
-                            data_chunk[companion][new_z] = a_companion;
-                            transformed[error][z] = transformed[companion][new_z] = 1;
-                        }
+                        //printf("%d %d\n",output_chunk[j][z],output_chunk[companion][permute(z, y, x, q, t)]);
+
+                        uint8_t a_cur = gf_mul(data_chunk[error][z], a) ^
+                                        gf_mul(data_chunk[companion][new_z], b);
+
+                        uint8_t a_companion = gf_mul(data_chunk[error][z], b) ^
+                                              gf_mul(data_chunk[companion][new_z], a);
+
+
+                        data_chunk[error][z] = a_cur;
+                        data_chunk[companion][new_z] = a_companion;
                     }
-                //printf("Time for compute back:%lf\n",(clock() - start)/(double)(CLOCKS_PER_SEC));
+                }
+
             }
 
 
@@ -369,8 +478,13 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
 
     memset(is_error, 0, sizeof(bool) * n);
 
-    for (int i = 0; i < error_cnt; i++)
+    bool is_systematic = true;
+
+    for (int i = 0; i < error_cnt; i++) {
         is_error[errors[i]] = 1;
+        if (errors[i] < k)
+            is_systematic = false;
+    }
 
     index = 0;
 
@@ -381,6 +495,8 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
 
     invert_matrix(errors, error_cnt);
 
+    //is_systematic = false;
+
     for (int block = 0; block < len / (stripe_size); block++) {
 
         for (int i = 0; i < n; i++)
@@ -389,7 +505,13 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
                     data_buffer[i][j] = data[i][len / stripe_size * j + block];
             }
 
-        sequential_decode(stripe_size, data_buffer, errors, error_cnt, q, t);
+
+
+        if (is_systematic)
+            systematic_encode(stripe_size, data_buffer, errors, error_cnt, q, t);
+        else
+            sequential_decode(stripe_size, data_buffer, errors, error_cnt, q, t);
+
 
         for (int i = 0; i < n; i++)
             if (is_error[i])
