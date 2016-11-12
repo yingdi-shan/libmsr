@@ -259,6 +259,10 @@ systematic_encode(uint32_t stripe_size, uint8_t data_chunk[][stripe_size], int *
     int s = 0;
     //memcpy(data_buffer,data_chunk,sizeof(data_buffer));
 
+    for (int j = 0; j < k; j++)
+        for (int z = 0; z < stripe_size; z++)
+            data_buffer[j][z] = data_chunk[j][z];
+
 
     //The construction of B.
     for (int z = 0; z < stripe_size; z++)
@@ -284,7 +288,6 @@ systematic_encode(uint32_t stripe_size, uint8_t data_chunk[][stripe_size], int *
         }
 
     for (int z = 0; z < stripe_size; z++)
-
         for (int j = 0; j < error_cnt; j++) {
             uint8_t res = 0;
             for (int i = 0; i < k; i++) {
