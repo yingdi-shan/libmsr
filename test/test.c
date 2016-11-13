@@ -9,11 +9,11 @@
 #include "gf.h"
 #include "msr.h"
 #include <stdio.h>
-
+#include <mm_malloc.h>
 
 
 #define STRIPE_SIZE (_pow(q,t) * q * (t-1))
-#define DATA_SIZE (STRIPE_SIZE )
+#define DATA_SIZE (1<<27)
 
 int main(int argc, char **argv) {
     srand(time(0));
@@ -37,15 +37,15 @@ int main(int argc, char **argv) {
         data[i] = NULL;
 
     for(int i=0;i<k;i++) {
-        data[i] = malloc(sizeof(uint8_t) * DATA_SIZE / k);
-        for(int j=0;j<DATA_SIZE/k;j++)
-            data[i][j] = rand() % 256;
-        //memset(data[i], 0xaa, sizeof(uint8_t) * DATA_SIZE / k);
+        posix_memalign((void *)&(data[i]),64,sizeof(uint8_t) * DATA_SIZE / k);
+        //for(int j=0;j<DATA_SIZE/k;j++)
+        //    data[i][j] = rand() % 256;
+        memset(data[i], 0xaa, sizeof(uint8_t) * DATA_SIZE / k);
     }
 
     for(int i=0;i<r;i++) {
         memory_pre_allocated[i] = malloc(sizeof(uint8_t) * DATA_SIZE / k);
-        memset(memory_pre_allocated[i],0x00,sizeof(uint8_t) * DATA_SIZE / k);
+        posix_memalign((void *)&(memory_pre_allocated[i]),64,sizeof(uint8_t) * DATA_SIZE / k);
     }
 
 
@@ -80,14 +80,14 @@ int main(int argc, char **argv) {
         }
 
         for(int i=0;i<r;i++) {
-            memory_pre_allocated[i] = malloc(sizeof(uint8_t) * DATA_SIZE / k);
+            posix_memalign((void *)&(memory_pre_allocated[i]),64,sizeof(uint8_t) * DATA_SIZE / k);
             memset(memory_pre_allocated[i],0x00,sizeof(uint8_t) * DATA_SIZE / k);
         }
 
 
         msr_encode(DATA_SIZE/k,n,k,input,memory_pre_allocated);
 
-/*
+
         for (int j = 0; j < n; j++) {
             printf("%d after repaired: ", j);
             for (int s = 0; s < _pow(q, t); s++) {
@@ -96,7 +96,7 @@ int main(int argc, char **argv) {
             printf("\n");
         }
 
-*/
+
         for(int j=0;j<n;j++)
             assert(!memcmp(input[j],data[j],DATA_SIZE/k));
 

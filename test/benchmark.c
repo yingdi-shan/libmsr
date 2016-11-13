@@ -9,9 +9,11 @@
 #include "gf.h"
 #include "msr.h"
 #include <stdio.h>
+#include <malloc.h>
+#include <mm_malloc.h>
 
 #define STRIPE_SIZE (_pow(q,t) * q * (t-1))
-#define DATA_SIZE ((1<<30))
+#define DATA_SIZE ((1<<28))
 
 int main(){
     gf_init();
@@ -32,13 +34,15 @@ int main(){
         data[i] = NULL;
 
     for(int i=0;i<k;i++) {
-        data[i] = malloc(sizeof(uint8_t) * DATA_SIZE / k);
+        posix_memalign((void *)&(data[i]),64,sizeof(uint8_t) * DATA_SIZE / k);
+        //data[i] = malloc(sizeof(uint8_t) * DATA_SIZE / k);
 
         memset(data[i], 0xaa, sizeof(uint8_t) * DATA_SIZE / k);
     }
 
     for(int i=0;i<r;i++) {
-        memory_pre_allocated[i] = malloc(sizeof(uint8_t) * DATA_SIZE / k);
+        posix_memalign((void *)&(memory_pre_allocated[i]),64,sizeof(uint8_t) * DATA_SIZE / k);
+
         memset(memory_pre_allocated[i],0x00,sizeof(uint8_t) * DATA_SIZE / k);
     }
 
