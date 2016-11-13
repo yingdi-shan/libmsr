@@ -13,7 +13,7 @@
 #include <mm_malloc.h>
 
 #define STRIPE_SIZE (_pow(q,t) * q * (t-1))
-#define DATA_SIZE ((1<<28))
+#define DATA_SIZE ((1<<30))
 
 int main(){
     gf_init();

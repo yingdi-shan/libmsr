@@ -17,6 +17,7 @@ typedef __m256i encode_t;
 
 #define MAX_NODE 16
 #define MAX_STRIPE 64
+#define AVX2
 
 #include <stdint.h>
 #include <assert.h>
@@ -39,6 +40,7 @@ void gf_init() {
         GfPow[i + GF_SIZE - 1] = GfPow[i];
         GfLog[GfPow[i] + GF_SIZE - 1] = GfLog[GfPow[i]] = i;
     }
+    init_avx2();
 }
 
 inline uint8_t gf_mul(uint32_t a, uint32_t b) {
@@ -101,6 +103,83 @@ uint8_t gf_pow(int x, int y) {
 
 const uint8_t u = 3;
 
+#ifdef AVX2
+__m256i mask_lo,mask_hi ;
+
+__m256i low_table[256];
+__m256i high_table[256];
+
+void init_avx2(){
+    mask_lo = _mm256_set1_epi8(0x0f);
+    mask_hi = _mm256_set1_epi8(0xf0);
+    //print_encode(mask_lo);
+    //print_encode(mask_hi);
+
+    int low_array[32];
+    int high_array[32];
+    for(int i=0;i<256;i++){
+        for(int j=0;j<16;j++)
+            low_array[j] = gf_mul(i,j);
+        for(int j=0;j<16;j++)
+            low_array[j + 16] = gf_mul(i,j);
+        for(int j=0;j<16;j++)
+            high_array[j] = gf_mul(i,j<<4);
+        for(int j=0;j<16;j++)
+            high_array[j + 16] = gf_mul(i,j<<4);
+        low_table[i] = _mm256_setr_epi8(low_array[0],low_array[1],low_array[2],low_array[3],low_array[4],low_array[5],low_array[6],low_array[7],low_array[8],low_array[9],low_array[10],low_array[11],low_array[12],low_array[13],low_array[14],low_array[15],low_array[16],low_array[17],low_array[18],low_array[19],low_array[20],low_array[21],low_array[22],low_array[23],low_array[24],low_array[25],low_array[26],low_array[27],low_array[28],low_array[29],low_array[30],low_array[31]);
+        high_table[i] = _mm256_setr_epi8(high_array[0],high_array[1],high_array[2],high_array[3],high_array[4],high_array[5],high_array[6],high_array[7],high_array[8],high_array[9],high_array[10],high_array[11],high_array[12],high_array[13],high_array[14],high_array[15],high_array[16],high_array[17],high_array[18],high_array[19],high_array[20],high_array[21],high_array[22],high_array[23],high_array[24],high_array[25],high_array[26],high_array[27],high_array[28],high_array[29],high_array[30],high_array[31]);
+
+        //print_encode(low_table[i]);
+        //print_encode(high_table[i]);
+    }
+
+
+}
+
+inline __m256i xor_region(__m256i input1,__m256i input2){
+
+    return _mm256_xor_si256(input1,input2);
+
+
+}
+
+inline __m256i multiply_region(__m256i input,uint8_t x){
+
+
+    __m256i low = _mm256_and_si256(input,mask_lo);
+    __m256i high = _mm256_and_si256(input,mask_hi);
+
+    __m256i low_t = low_table[x],high_t = high_table[x];
+    high = _mm256_srli_epi16(high,4);
+
+    __m256i right = _mm256_shuffle_epi8(low_t,low);
+    __m256i left = _mm256_shuffle_epi8(high_t,high);
+
+
+    return _mm256_xor_si256(left,right);
+
+
+}
+
+void print_encode(__m256i x){
+    //for(int i=0;i<32;i++)
+    printf("%0x ",_mm256_extract_epi8(x,0));
+    printf("%0x ",_mm256_extract_epi8(x,1));
+    printf("%0x ",_mm256_extract_epi8(x,2));
+    printf("%0x ",_mm256_extract_epi8(x,3));
+    printf("%0x ",_mm256_extract_epi8(x,4));
+    printf("%0x ",_mm256_extract_epi8(x,5));
+    printf("%0x ",_mm256_extract_epi8(x,6));
+    printf("%0x ",_mm256_extract_epi8(x,7));
+    printf("%0x ",_mm256_extract_epi8(x,8));
+    printf("%0x ",_mm256_extract_epi8(x,9));
+    printf("%0x ",_mm256_extract_epi8(x,10));
+
+    printf("\n");
+}
+
+
+#endif
 
 static uint8_t node_companion[MAX_NODE][MAX_STRIPE];
 static uint8_t z_companion[MAX_NODE][MAX_STRIPE];
@@ -202,7 +281,7 @@ compute_kappa(uint32_t stripe_size, int q, int t, int z, bool *errors, int error
     int k = n - q;
 
 
-    for (int i = 0; i < n; i++)
+    for (int i = 0; i < k; i++)
         if (!errors[i]) {
             for (int j = 0; j < error_cnt; j++)
                 for (int w = 0; w < sizeof(encode_t); w++) {
@@ -210,14 +289,14 @@ compute_kappa(uint32_t stripe_size, int q, int t, int z, bool *errors, int error
                     minus_kappa[j * sizeof(encode_t) + w] ^= gf_mul(theta[j][i], ((uint8_t *) data_chunk[i])[z * sizeof(encode_t) + w]);
                 }
         }
-/*
+
     for (int i = k; i < k + error_cnt; i++)
         if (!errors[i])
             for (int w = 0; w < sizeof(encode_t); w++)
                 minus_kappa[(i - k)*sizeof(encode_t) + w] ^= ((uint8_t *) data_chunk[i])[z * sizeof(encode_t) + w];
-*/
 
-    for (int i = 0; i < n; i++) {
+
+    for (int i = 0; i < k; i++) {
         int companion = node_companion[i][z];
 
         if (i != companion && (!errors[companion] || !errors[i])) {
@@ -229,7 +308,7 @@ compute_kappa(uint32_t stripe_size, int q, int t, int z, bool *errors, int error
                 }
         }
     }
-/*
+
     for (int i = k; i < k + error_cnt; i++) {
         int companion = node_companion[i][z];
 
@@ -240,7 +319,7 @@ compute_kappa(uint32_t stripe_size, int q, int t, int z, bool *errors, int error
                                                                                  w]);
             }
     }
-*/
+
 }
 
 int test_companion(int i, int z, int q, int t) {
@@ -326,50 +405,45 @@ systematic_encode(uint32_t stripe_size, int *errors, int error_cnt, int *sigmas,
         for (int z = 0; z < stripe_size; z++)
             data_buffer[j][z] = data_chunk[j][z];
 
-    uint8_t *data_buffer_ptr[n];
-    uint8_t *data_chunk_ptr[n];
-
-    for (int i = 0; i < n; i++) {
-        data_buffer_ptr[i] = (uint8_t *) data_buffer[i];
-        data_chunk_ptr[i] = (uint8_t *) data_chunk[i];
-    }
 
 
     //The construction of B.
     for (int z = 0; z < stripe_size; z++)
 
-        for (int j = 0; j < k; j++)
-            for (int w = 0; w < sizeof(encode_t); w++) {
-
-                int companion = node_companion[j][z];
-
-                if (companion < j && !is_error[companion]) {
-                    int new_z = z_companion[j][z];
-
-                    uint8_t a_cur = data_chunk_ptr[j][z * sizeof(encode_t) + w] ^
-                                    gf_mul(data_chunk_ptr[companion][new_z * sizeof(encode_t) + w], u);
-
-                    uint8_t a_companion = gf_mul(data_chunk_ptr[j][z * sizeof(encode_t) + w], u) ^
-                                          data_chunk_ptr[companion][new_z * sizeof(encode_t) + w];
+        for (int j = 0; j < k; j++) {
 
 
-                    data_buffer_ptr[j][z * sizeof(encode_t) + w] = a_cur;
-                    data_buffer_ptr[companion][new_z * sizeof(encode_t) + w] = a_companion;
+            int companion = node_companion[j][z];
 
-                }
+            if (companion < j && !is_error[companion]) {
+                int new_z = z_companion[j][z];
+
+                encode_t a_cur = xor_region(data_chunk[j][z],multiply_region(data_chunk[companion][new_z],u));
+
+                encode_t a_companion = xor_region(multiply_region(data_chunk[j][z],u),data_chunk[companion][new_z]);
+
+
+                data_buffer[j][z ] = a_cur;
+                data_buffer[companion][new_z] = a_companion;
+
             }
+        }
+
 
     for (int z = 0; z < stripe_size; z++)
-        for (int j = 0; j < error_cnt; j++)
-            for (int w = 0; w < sizeof(encode_t); w++) {
-                uint8_t res = 0;
+        for (int j = 0; j < error_cnt; j++) {
+
+
+                encode_t res = _mm256_set1_epi64x(0);
+
                 for (int i = 0; i < k; i++) {
-                    //printf("%d,%d:%0x\n",errors[j],i,theta[j][i]);
-                    res ^= gf_mul(theta[errors[j] - k][i], data_buffer_ptr[i][z * sizeof(encode_t) + w]);
+                    res = xor_region(res,multiply_region(data_buffer[i][z],theta[errors[j] - k][i]));
                 }
-                data_buffer_ptr[errors[j]][z * sizeof(encode_t) + w] = res;
-                //printf("res:%0x\n",res);
-            }
+                data_buffer[errors[j]][z] = res;
+
+
+
+        }
 
 
     while (s <= sigma_max) {
@@ -379,7 +453,7 @@ systematic_encode(uint32_t stripe_size, int *errors, int error_cnt, int *sigmas,
             if (sigmas[z] == s) {
 
                 for (int j = 0; j < error_cnt; j++)
-                    for (int w = 0; w < sizeof(encode_t); w++) {
+                     {
 
                         int error = errors[j];
 
@@ -389,19 +463,15 @@ systematic_encode(uint32_t stripe_size, int *errors, int error_cnt, int *sigmas,
 
                         if (companion < error && is_error[companion]) {
 
-                            int z_pos = z * sizeof(encode_t) + w;
-                            int new_z_pos = new_z * sizeof(encode_t) + w;
 
 
-                            uint8_t a_cur = gf_mul(data_buffer_ptr[error][z_pos], a) ^
-                                            gf_mul(data_buffer_ptr[companion][new_z_pos], b);
+                            encode_t a_cur = xor_region(multiply_region(data_buffer[error][z],a),multiply_region(data_buffer[companion][new_z],b));
 
-                            uint8_t a_companion = gf_mul(data_buffer_ptr[error][z_pos], b) ^
-                                                  gf_mul(data_buffer_ptr[companion][new_z_pos], a);
+                            encode_t a_companion = xor_region(multiply_region(data_buffer[error][z],b),multiply_region(data_buffer[companion][new_z],a));
 
 
-                            data_buffer_ptr[error][z_pos] = a_cur;
-                            data_buffer_ptr[companion][new_z_pos] = a_companion;
+                            data_buffer[error][z] = a_cur;
+                            data_buffer[companion][new_z] = a_companion;
 
                         }
                     }
@@ -589,8 +659,9 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
             if (!is_error[i]) {
                 data_ptr = (encode_t *) data[i];
                 //printf("%0x\n",*(uint8_t *)data_ptr);
-                for (int j = 0; j < stripe_size; j++)
+                for (int j = 0; j < stripe_size; j++) {
                     data_chunk[i][j] = data_ptr[block_size * j + index];
+                }
             }
 
 
