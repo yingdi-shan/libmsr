@@ -13,10 +13,13 @@
 
 #include <immintrin.h>
 
-typedef __m256i encode_t;
+
 
 #define MAX_NODE 16
 #define MAX_STRIPE 64
+
+
+
 #define AVX2
 
 #include <stdint.h>
@@ -104,6 +107,13 @@ uint8_t gf_pow(int x, int y) {
 const uint8_t u = 3;
 
 #ifdef AVX2
+
+typedef __m256i encode_t;
+
+#define REGION_SIZE 128
+#define REGION_BLOCKS (REGION_SIZE/sizeof(encode_t))
+
+
 __m256i mask_lo,mask_hi ;
 
 __m256i low_table[256];
@@ -190,10 +200,12 @@ static uint8_t inv_matrix[MAX_NODE][MAX_NODE];
 
 
 //Used for symbol-remaping.
-encode_t data_buffer[MAX_NODE][MAX_STRIPE];
+__attribute__((aligned(64)))
+encode_t data_buffer[MAX_NODE][MAX_STRIPE * REGION_BLOCKS];
 
 //Input data chunk.
-encode_t data_chunk[MAX_NODE][MAX_STRIPE];
+__attribute__((aligned(64)))
+encode_t data_chunk[MAX_NODE][MAX_STRIPE * REGION_BLOCKS];
 
 
 static void invert_matrix(int *errors, int error_cnt) {
@@ -403,14 +415,16 @@ systematic_encode(uint32_t stripe_size, int *errors, int error_cnt, int *sigmas,
 
     for (int j = 0; j < k; j++)
         for (int z = 0; z < stripe_size; z++)
-            data_buffer[j][z] = data_chunk[j][z];
+            for(int w=0;w<REGION_BLOCKS;w++)
+                data_buffer[j][z * REGION_BLOCKS + w] = data_chunk[j][z * REGION_BLOCKS + w];
 
 
 
     //The construction of B.
     for (int z = 0; z < stripe_size; z++)
 
-        for (int j = 0; j < k; j++) {
+        for (int j = 0; j < k; j++)
+        for(int w=0;w<REGION_BLOCKS;w++){
 
 
             int companion = node_companion[j][z];
@@ -418,30 +432,29 @@ systematic_encode(uint32_t stripe_size, int *errors, int error_cnt, int *sigmas,
             if (companion < j && !is_error[companion]) {
                 int new_z = z_companion[j][z];
 
-                encode_t a_cur = xor_region(data_chunk[j][z],multiply_region(data_chunk[companion][new_z],u));
+                encode_t a_cur = xor_region(data_chunk[j][z * REGION_BLOCKS + w],multiply_region(data_chunk[companion][new_z * REGION_BLOCKS + w],u));
 
-                encode_t a_companion = xor_region(multiply_region(data_chunk[j][z],u),data_chunk[companion][new_z]);
+                encode_t a_companion = xor_region(multiply_region(data_chunk[j][z *REGION_BLOCKS + w],u),data_chunk[companion][new_z * REGION_BLOCKS + w]);
 
 
-                data_buffer[j][z ] = a_cur;
-                data_buffer[companion][new_z] = a_companion;
+                data_buffer[j][z * REGION_BLOCKS + w] = a_cur;
+                data_buffer[companion][new_z * REGION_BLOCKS+ w] = a_companion;
 
             }
         }
 
 
     for (int z = 0; z < stripe_size; z++)
-        for (int j = 0; j < error_cnt; j++) {
+        for (int j = 0; j < error_cnt; j++)
+            for(int w=0;w<REGION_BLOCKS;w++) {
 
 
                 encode_t res = _mm256_set1_epi64x(0);
 
                 for (int i = 0; i < k; i++) {
-                    res = xor_region(res,multiply_region(data_buffer[i][z],theta[errors[j] - k][i]));
+                    res = xor_region(res,multiply_region(data_buffer[i][z * REGION_BLOCKS + w],theta[errors[j] - k][i]));
                 }
-                data_buffer[errors[j]][z] = res;
-
-
+                data_buffer[errors[j]][z * REGION_BLOCKS + w] = res;
 
         }
 
@@ -461,17 +474,17 @@ systematic_encode(uint32_t stripe_size, int *errors, int error_cnt, int *sigmas,
                         int new_z = z_companion[error][z];
 
 
-                        if (companion < error && is_error[companion]) {
+                        if (companion < error && is_error[companion]) for(int w=0;w<REGION_BLOCKS;w++){
 
 
 
-                            encode_t a_cur = xor_region(multiply_region(data_buffer[error][z],a),multiply_region(data_buffer[companion][new_z],b));
+                            encode_t a_cur = xor_region(multiply_region(data_buffer[error][z * REGION_BLOCKS + w],a),multiply_region(data_buffer[companion][new_z * REGION_BLOCKS + w],b));
 
-                            encode_t a_companion = xor_region(multiply_region(data_buffer[error][z],b),multiply_region(data_buffer[companion][new_z],a));
+                            encode_t a_companion = xor_region(multiply_region(data_buffer[error][z * REGION_BLOCKS + w],b),multiply_region(data_buffer[companion][new_z * REGION_BLOCKS + w],a));
 
 
-                            data_buffer[error][z] = a_cur;
-                            data_buffer[companion][new_z] = a_companion;
+                            data_buffer[error][z * REGION_BLOCKS + w] = a_cur;
+                            data_buffer[companion][new_z * REGION_BLOCKS + w] = a_companion;
 
                         }
                     }
@@ -484,7 +497,8 @@ systematic_encode(uint32_t stripe_size, int *errors, int error_cnt, int *sigmas,
 
     for (int i = 0; i < error_cnt; i++)
         for (int j = 0; j < stripe_size; j++)
-            data_chunk[errors[i]][j] = data_buffer[errors[i]][j];
+            for(int w=0;w<REGION_BLOCKS;w++)
+            data_chunk[errors[i]][j * REGION_BLOCKS + w] = data_buffer[errors[i]][j * REGION_BLOCKS + w];
 
 
 }
@@ -594,6 +608,9 @@ sequential_decode(uint32_t stripe_size, int *errors, int error_cnt, int *sigmas,
 
 }
 
+
+
+
 void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocated) {
     int r = n - k;
 
@@ -605,7 +622,7 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
 
     uint32_t stripe_size = _pow(q, t);
 
-    assert(len % (stripe_size * sizeof(encode_t)) == 0);
+    assert(len % (stripe_size * REGION_SIZE) == 0);
 
     int error_cnt = 0;
 
@@ -648,7 +665,7 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
     for (int z = 0; z < stripe_size; z++)
         sigmas[z] = compute_sigma(errors, error_cnt, q, t, z);
 
-    int block_size = len / stripe_size / sizeof(encode_t);
+    int block_size = len / stripe_size / REGION_SIZE;
 
     encode_t *data_ptr;
 
@@ -659,8 +676,11 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
             if (!is_error[i]) {
                 data_ptr = (encode_t *) data[i];
                 //printf("%0x\n",*(uint8_t *)data_ptr);
-                for (int j = 0; j < stripe_size; j++) {
-                    data_chunk[i][j] = data_ptr[block_size * j + index];
+                for (int j = 0; j < stripe_size; j++)
+                    for(int w = 0;w<REGION_BLOCKS;w++)
+                {
+                    data_chunk[i][j * REGION_BLOCKS + w] = data_ptr[(block_size * j + index) * REGION_BLOCKS +w];
+                    //_mm_prefetch((void *)(data_ptr+(block_size * j  + index)* REGION_BLOCKS +w ),_MM_HINT_T0);
                 }
             }
 
@@ -676,7 +696,8 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
                 data_ptr = (encode_t *) data[i];
 
                 for (int j = 0; j < stripe_size; j++)
-                    data_ptr[block_size * j + index] = data_chunk[i][j];
+                    for(int w = 0;w<REGION_BLOCKS;w++)
+                    data_ptr[(block_size * j + index) * REGION_BLOCKS +w] = data_chunk[i][j * REGION_BLOCKS + w];
             }
 
     }
