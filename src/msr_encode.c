@@ -275,8 +275,6 @@ static int compute_sigma(int *errors, int error_cnt, int q, int t, int z) {
     return sigma;
 }
 
-uint8_t data_buffer[MAX_NODE][MAX_STRIPE];
-
 static void
 systematic_encode(uint32_t stripe_size, uint8_t data_chunk[][stripe_size], int *errors, int error_cnt, int *sigmas,
                   int q, int t) {
@@ -304,12 +302,6 @@ systematic_encode(uint32_t stripe_size, uint8_t data_chunk[][stripe_size], int *
     assert(b ^ gf_mul(a, u) == u);
 
     int s = 0;
-    //memcpy(data_buffer,data_chunk,sizeof(data_buffer));
-
-    for (int j = 0; j < k; j++)
-        for (int z = 0; z < stripe_size; z++)
-            data_buffer[j][z] = data_chunk[j][z];
-
 
     //The construction of B.
     for (int z = 0; z < stripe_size; z++)
@@ -328,20 +320,22 @@ systematic_encode(uint32_t stripe_size, uint8_t data_chunk[][stripe_size], int *
                                       data_chunk[companion][new_z];
 
 
-                data_buffer[j][z] = a_cur;
-                data_buffer[companion][new_z] = a_companion;
+                data_chunk[j][z] = a_cur;
+                data_chunk[companion][new_z] = a_companion;
 
             }
         }
+
+
 
     for (int z = 0; z < stripe_size; z++)
         for (int j = 0; j < error_cnt; j++) {
             uint8_t res = 0;
             for (int i = 0; i < k; i++) {
                 //printf("%d,%d:%0x\n",errors[j],i,theta[j][i]);
-                res ^= gf_mul(theta[errors[j] - k][i], data_buffer[i][z]);
+                res ^= gf_mul(theta[errors[j] - k][i], data_chunk[i][z]);
             }
-            data_buffer[errors[j]][z] = res;
+            data_chunk[errors[j]][z] = res;
             //printf("%0x\n",res);
         }
 
@@ -363,15 +357,15 @@ systematic_encode(uint32_t stripe_size, uint8_t data_chunk[][stripe_size], int *
                     if (companion < error && is_error[companion]) {
 
 
-                        uint8_t a_cur = gf_mul(data_buffer[error][z], a) ^
-                                        gf_mul(data_buffer[companion][new_z], b);
+                        uint8_t a_cur = gf_mul(data_chunk[error][z], a) ^
+                                        gf_mul(data_chunk[companion][new_z], b);
 
-                        uint8_t a_companion = gf_mul(data_buffer[error][z], b) ^
-                                              gf_mul(data_buffer[companion][new_z], a);
+                        uint8_t a_companion = gf_mul(data_chunk[error][z], b) ^
+                                              gf_mul(data_chunk[companion][new_z], a);
 
 
-                        data_buffer[error][z] = a_cur;
-                        data_buffer[companion][new_z] = a_companion;
+                        data_chunk[error][z] = a_cur;
+                        data_chunk[companion][new_z] = a_companion;
 
                     }
                 }
@@ -381,11 +375,6 @@ systematic_encode(uint32_t stripe_size, uint8_t data_chunk[][stripe_size], int *
 
         s++;
     }
-
-    for (int i = 0; i < error_cnt; i++)
-        for (int j = 0; j < stripe_size; j++)
-            data_chunk[errors[i]][j] = data_buffer[errors[i]][j];
-
 
 }
 
