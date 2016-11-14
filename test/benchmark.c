@@ -13,7 +13,7 @@
 #include <mm_malloc.h>
 
 #define STRIPE_SIZE (_pow(q,t) * q * (t-1))
-#define DATA_SIZE ((1<<30))
+#define DATA_SIZE (1<<30)
 
 #define TEST_LOOP 1
 
