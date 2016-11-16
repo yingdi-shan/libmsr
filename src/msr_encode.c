@@ -646,7 +646,7 @@ systematic_encode_with_prefetch(int len, uint8_t **data, int index, int block_si
     //The construction of B.
     for (int z = 0; z < stripe_size; z++) {
 
-        memset(res,0,sizeof(res));
+        //memset(res,0,sizeof(res));
 
         for (int j = 0; j < k; j++) {
             for (int w = 0; w < REGION_BLOCKS; w++) {
@@ -664,7 +664,7 @@ systematic_encode_with_prefetch(int len, uint8_t **data, int index, int block_si
 
                     encode_t a_companion = xor_region(multiply_region(data_ptr[j][z_index], u),
                                                       data_ptr[companion][new_z_index]);
-                    
+
 
                     data_chunk[j][z * REGION_BLOCKS + w] = a_cur;
                     data_chunk[companion][new_z * REGION_BLOCKS + w] = a_companion;
