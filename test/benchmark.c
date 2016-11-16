@@ -15,7 +15,7 @@
 #define STRIPE_SIZE (_pow(q,t) * q * (t-1))
 #define DATA_SIZE (1<<30)
 
-#define TEST_LOOP 1
+#define TEST_LOOP 5
 
 int main(){
     gf_init();
@@ -51,12 +51,16 @@ int main(){
 
     clock_t start = clock();
 
-    msr_encode(DATA_SIZE / k, n, k, data, memory_pre_allocated);
+    for(int loop=0;loop<TEST_LOOP;loop++) {
+        for(int i=0;i<r;i++)
+            data[i + k] = NULL;
+        msr_encode(DATA_SIZE / k, n, k, data, memory_pre_allocated);
+    }
 
 
     printf("Total Clock Time: %.2fs\n",(clock() - start)/(double)CLOCKS_PER_SEC);
 
-    printf("Throughput: %.2fMB/s\n",(double)DATA_SIZE/((clock() - start)/(double)CLOCKS_PER_SEC) * 1e-6 );
+    printf("Throughput: %.2fMB/s\n",TEST_LOOP * (double)DATA_SIZE/((clock() - start)/(double)CLOCKS_PER_SEC) * 1e-6 );
 
 
     return 0;
