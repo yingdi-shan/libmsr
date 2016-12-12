@@ -15,7 +15,7 @@
 #define STRIPE_SIZE (_pow(q,t) * q * (t-1))
 #define DATA_SIZE (1<<30)
 
-#define TEST_LOOP 5
+#define TEST_LOOP 1
 
 int main(){
     gf_init();

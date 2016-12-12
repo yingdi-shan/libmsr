@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
     }
 
     int test_turn = 10;
-
+/*
     for (int i = 0; i < test_turn; i++) {
         printf("Turn %d:\n", i);
 
@@ -87,7 +87,7 @@ int main(int argc, char **argv) {
 
         msr_encode(DATA_SIZE/k,n,k,input,memory_pre_allocated);
 
-/*
+
         for (int j = 0; j < n; j++) {
             printf("%d after repaired: ", j);
             for (int s = 0; s < _pow(q, t); s++) {
@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
             }
             printf("\n");
         }
-*/
+
 
         for(int j=0;j<n;j++)
             assert(!memcmp(input[j],data[j],DATA_SIZE/k));
@@ -108,7 +108,7 @@ int main(int argc, char **argv) {
 
 
     }
-
+*/
     return 0;
 
 }
