@@ -241,7 +241,7 @@ static void invert_matrix(int *errors, int error_cnt) {
     }
 }
 
-static void invert_matrix_regenerate(int x0,int y0,int q,int t){
+static void invert_matrix_regenerate(int x0, int y0, int q, int t) {
     memset(inv_matrix, 0, sizeof(inv_matrix));
 
     for (int i = 0; i < q; i++)
@@ -251,10 +251,10 @@ static void invert_matrix_regenerate(int x0,int y0,int q,int t){
     for (int i = 0; i < q; i++)
         for (int j = 0; j < q; j++) {
             int id = y0 * q + j;
-            if(j==x0)
+            if (j == x0)
                 matrix[i][j] = theta[i][id];
             else
-                matrix[i][j] = gf_mul(u,theta[i][id]);
+                matrix[i][j] = gf_mul(u, theta[i][id]);
         }
 
     for (int i = 0; i < q; i++) {
@@ -567,17 +567,17 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
     int y_0 = error_id / q;
     int x_0 = error_id % q;
 
-    encode_t * mem_ptr = (encode_t *) memory;
+    encode_t *mem_ptr = (encode_t *) memory;
 
     for (i = 0; i < n; i++)
         data_ptr[i] = (encode_t *) data_collected[i];
 
-    invert_matrix_regenerate(x_0,y_0,q,t);
+    invert_matrix_regenerate(x_0, y_0, q, t);
 
     int z_num[MAX_STRIPE];
     int z_pos[MAX_STRIPE];
-    memset(z_pos,-1,sizeof(z_pos));
-    for(int z_id=0;z_id<beta;z_id++){
+    memset(z_pos, -1, sizeof(z_pos));
+    for (int z_id = 0; z_id < beta; z_id++) {
 
         z_num[z_id] = (z_id / _pow(q, t - y_0 - 1) * q + x_0) * _pow(q, t - y_0 - 1) + z_id % _pow(q, t - y_0 - 1);
         z_pos[z_num[z_id]] = z_id;
@@ -596,14 +596,15 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
             for (i = 0; i < n; i++)
                 if (data_collected[i]) {
                     for (int e = 0; e < q; e++)
-                        for (int w = 0; w < REGION_BLOCKS; w++){
-                            kappa[e][w] = xor_region(kappa[e][w],multiply_region(data_ptr[i][(z_id * block_size + index) * REGION_BLOCKS + w],theta[e][i]));
+                        for (int w = 0; w < REGION_BLOCKS; w++) {
+                            kappa[e][w] = xor_region(kappa[e][w], multiply_region(
+                                    data_ptr[i][(z_id * block_size + index) * REGION_BLOCKS + w], theta[e][i]));
                         }
                 }
 
-            for (i = 0;i<n;i++){
+            for (i = 0; i < n; i++) {
                 int companion = node_companion[i][z];
-                if(i!=companion && data_collected[companion]){
+                if (i != companion && data_collected[companion]) {
                     int z_comp = z_companion[i][z];
                     z_comp = z_pos[z_comp];
                     assert(z_comp != -1);
@@ -620,7 +621,7 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
 
             for (int j = 0; j < q; j++) {
 
-                int z=(z_id / _pow(q, t - y_0 - 1) * q + j) * _pow(q, t - y_0 - 1) + z_id % _pow(q, t - y_0 - 1);
+                int z = (z_id / _pow(q, t - y_0 - 1) * q + j) * _pow(q, t - y_0 - 1) + z_id % _pow(q, t - y_0 - 1);
                 int z_index = (z * block_size + index) * REGION_BLOCKS;
 
                 for (int w = 0; w < REGION_BLOCKS; w++)
@@ -629,8 +630,8 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
                 for (int k = 0; k < q; k++)
                     for (int w = 0; w < REGION_BLOCKS; w++)
                         mem_ptr[z_index + w] = xor_region(mem_ptr[z_index + w],
-                                                                      multiply_region(kappa[k][w],
-                                                                                      inv_matrix[j][k]));
+                                                          multiply_region(kappa[k][w],
+                                                                          inv_matrix[j][k]));
             }
 
         }
@@ -833,104 +834,111 @@ systematic_encode_with_prefetch(uint8_t **data, int index, int block_size, int *
         for (int z = 0; z < stripe_size * REGION_BLOCKS; z++)
             tmp[i][z] = _mm256_set1_epi8(0);
 
-    //The construction of B.
-    for (int j = 0; j < k; j++) {
-        for (int z = 0; z < stripe_size; z++) {
-            int z_index = (block_size * z + index) * REGION_BLOCKS;
-
-            int companion = node_companion[j][z];
-            if (companion != j && !is_error[companion]) {
-
-                int new_z = z_companion[j][z];
-
-
-                int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
-
-
-                for (int w = 0; w < REGION_BLOCKS; w++) {
-
-                    encode_t a_cur = xor_region(data_ptr[j][z_index + w],
-                                                multiply_region(data_ptr[companion][new_z_index + w], u));
-
-
-                    for (int e = 0; e < 4; e++)
-                        tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
-                                                                   multiply_region(a_cur,
-                                                                                   theta[errors[e] - k][j]));
-
-
-                    _mm_prefetch(&data_ptr[j][(block_size * (z + 1) + index) * REGION_BLOCKS + w], _MM_HINT_NTA);
-                    _mm_prefetch(&data_ptr[node_companion[j][z + 1]][
-                                         (block_size * z_companion[j][z + 1] + index) * REGION_BLOCKS + w],
-                                 _MM_HINT_NTA);
-
-                }
-
-            } else if (companion == j) {
-                for (int w = 0; w < REGION_BLOCKS; w++) {
-                    for (int e = 0; e < 4; e++) {
-                        tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
-                                                                   multiply_region(data_ptr[j][
-                                                                                           (block_size * z + index) *
-                                                                                           REGION_BLOCKS + w],
-                                                                                   theta[errors[e] - k][j]));
-                    }
-                    _mm_prefetch(&data_ptr[j][(block_size * (z + 1) + index) * REGION_BLOCKS + w], _MM_HINT_NTA);
-                    _mm_prefetch(&data_ptr[node_companion[j][z + 1]][
-                                         (block_size * z_companion[j][z + 1] + index) * REGION_BLOCKS + w],
-                                 _MM_HINT_NTA);
-
-                }
-                //print_encode(tmp[0][z*REGION_BLOCKS + w]);
-
-            }
-
-        }
-    }
-
-
     for (int i = 0; i < error_cnt; i++)
         err_id[errors[i]] = i;
 
+    //The construction of B.
+    while (s <= sigma_max) {
+        for (int z = 0; z < stripe_size; z++)
+            if (sigmas[z] == s) {
 
-    for (int z = 0; z < stripe_size; z++)
+                for (int j = 0; j < k; j++) {
 
-        for (int j = 0; j < error_cnt; j++) {
+                    int z_index = (block_size * z + index) * REGION_BLOCKS;
 
-            int error = errors[j];
+                    int companion = node_companion[j][z];
+                    if (companion != j && !is_error[companion]) {
 
-            int companion = node_companion[error][z];
-            int new_z = z_companion[error][z];
-
-            int comp_id = err_id[companion];
-            //printf("%d %d\n",companion,error);
-
-            if (companion < error && is_error[companion]) {
-
-                for (int w = 0; w < REGION_BLOCKS; w++) {
-                    int z_index = z * REGION_BLOCKS + w;
-                    int new_z_index = new_z * REGION_BLOCKS + w;
-
-                    encode_t a_cur
-                            = xor_region(multiply_region(tmp[j][z_index], a),
-                                         multiply_region(
-                                                 tmp[comp_id][new_z_index], b));
-
-                    encode_t a_companion = xor_region(
-                            multiply_region(tmp[j][z_index], b),
-                            multiply_region(tmp[comp_id][new_z_index], a));
+                        int new_z = z_companion[j][z];
 
 
-                    data_ptr[error][(block_size * z + index) * REGION_BLOCKS + w] = a_cur;
-                    data_ptr[companion][(block_size * new_z + index) * REGION_BLOCKS + w] = a_companion;
+                        int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
+
+
+                        for (int w = 0; w < REGION_BLOCKS; w++) {
+
+                            encode_t a_cur = xor_region(data_ptr[j][z_index + w],
+                                                        multiply_region(data_ptr[companion][new_z_index + w], u));
+
+
+                            for (int e = 0; e < 4; e++)
+                                tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
+                                                                           multiply_region(a_cur,
+                                                                                           theta[errors[e] - k][j]));
+
+
+                            _mm_prefetch(&data_ptr[j + 1][(block_size * z + index) * REGION_BLOCKS + w], _MM_HINT_NTA);
+                            _mm_prefetch(&data_ptr[node_companion[j + 1][z]][
+                                                 (block_size * z_companion[j + 1][z] + index) * REGION_BLOCKS + w],
+                                         _MM_HINT_NTA);
+
+                        }
+
+                    } else if (companion == j) {
+                        for (int w = 0; w < REGION_BLOCKS; w++) {
+                            for (int e = 0; e < 4; e++) {
+                                tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
+                                                                           multiply_region(data_ptr[j][
+                                                                                                   (block_size * z +
+                                                                                                    index) *
+                                                                                                   REGION_BLOCKS + w],
+                                                                                           theta[errors[e] - k][j]));
+                            }
+                            _mm_prefetch(&data_ptr[j + 1][(block_size * z + index) * REGION_BLOCKS + w], _MM_HINT_NTA);
+                            _mm_prefetch(&data_ptr[node_companion[j + 1][z]][
+                                                 (block_size * z_companion[j + 1][z] + index) * REGION_BLOCKS + w],
+                                         _MM_HINT_NTA);
+
+                        }
+                        //print_encode(tmp[0][z*REGION_BLOCKS + w]);
+
+                    }
 
                 }
-            } else if (companion == error) {
-                for (int w = 0; w < REGION_BLOCKS; w++)
-                    data_ptr[error][(block_size * z + index) * REGION_BLOCKS + w] = tmp[j][z * REGION_BLOCKS + w];
             }
-        }
 
+
+        for (int z = 0; z < stripe_size; z++)
+            if (sigmas[z] == s)
+
+                for (int j = 0; j < error_cnt; j++) {
+
+                    int error = errors[j];
+
+                    int companion = node_companion[error][z];
+                    int new_z = z_companion[error][z];
+
+                    int comp_id = err_id[companion];
+                    //printf("%d %d\n",companion,error);
+
+                    if (companion < error && is_error[companion]) {
+
+                        for (int w = 0; w < REGION_BLOCKS; w++) {
+                            int z_index = z * REGION_BLOCKS + w;
+                            int new_z_index = new_z * REGION_BLOCKS + w;
+
+                            encode_t a_cur
+                                    = xor_region(multiply_region(tmp[j][z_index], a),
+                                                 multiply_region(
+                                                         tmp[comp_id][new_z_index], b));
+
+                            encode_t a_companion = xor_region(
+                                    multiply_region(tmp[j][z_index], b),
+                                    multiply_region(tmp[comp_id][new_z_index], a));
+
+
+                            data_ptr[error][(block_size * z + index) * REGION_BLOCKS + w] = a_cur;
+                            data_ptr[companion][(block_size * new_z + index) * REGION_BLOCKS + w] = a_companion;
+
+                        }
+                    } else if (companion == error) {
+                        for (int w = 0; w < REGION_BLOCKS; w++)
+                            data_ptr[error][(block_size * z + index) * REGION_BLOCKS + w] = tmp[j][z * REGION_BLOCKS +
+                                                                                                   w];
+                    }
+                }
+        s++;
+    }
 
 }
 
