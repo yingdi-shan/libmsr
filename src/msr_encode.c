@@ -673,8 +673,6 @@ sequential_decode(uint8_t **data, int index, int block_size, int *errors, int er
     }
 }
 
-//FIXME: Improve locality will cause performance drop down, why?
-//__attribute__((align(64)))
 encode_t tmp[MAX_NODE][MAX_STRIPE * REGION_BLOCKS + 3];
 
 int err_id[MAX_NODE];
@@ -763,12 +761,16 @@ systematic_encode_with_prefetch(uint8_t **data, int index, int block_size, int *
                     } else if (companion == j) {
                         for (int w = 0; w < REGION_BLOCKS; w++) {
                             for (int e = 0; e < 4; e++) {
-                                tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
+                                tmp[e][z*REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
                                                                            multiply_region(data_ptr[j][
                                                                                                    (block_size * z +
                                                                                                     index) *
                                                                                                    REGION_BLOCKS + w],
                                                                                            theta[errors[e] - k][j]));
+                                //tmp[e][z*REGION_BLOCKS + w] = mid;
+                                //tmp[errors[e]][(block_size * z + index) * REGION_BLOCKS + w]=mid;
+
+                                //_mm256_stream_si256(&data_ptr[errors[e]][(block_size * z + index) * REGION_BLOCKS + w],mid);
                             }
                             _mm_prefetch(&data_ptr[j + 1][(block_size * z + index) * REGION_BLOCKS + w], _MM_HINT_NTA);
                             _mm_prefetch(&data_ptr[node_companion[j + 1][z]][
@@ -798,7 +800,6 @@ systematic_encode_with_prefetch(uint8_t **data, int index, int block_size, int *
                     //printf("%d %d\n",companion,error);
 
                     if (companion < error && is_error[companion]) {
-
                         for (int w = 0; w < REGION_BLOCKS; w++) {
                             int z_index = z * REGION_BLOCKS + w;
                             int new_z_index = new_z * REGION_BLOCKS + w;
@@ -813,14 +814,15 @@ systematic_encode_with_prefetch(uint8_t **data, int index, int block_size, int *
                                     multiply_region(tmp[comp_id][new_z_index], a));
 
 
-                            data_ptr[error][(block_size * z + index) * REGION_BLOCKS + w] = a_cur;
-                            data_ptr[companion][(block_size * new_z + index) * REGION_BLOCKS + w] = a_companion;
-
+                            _mm256_stream_si256(&data_ptr[error][(block_size * z + index) * REGION_BLOCKS + w],a_cur);
+                            _mm256_stream_si256(&data_ptr[companion][(block_size * new_z + index) * REGION_BLOCKS + w],a_companion);
                         }
-                    } else if (companion == error) {
-                        for (int w = 0; w < REGION_BLOCKS; w++)
-                            data_ptr[error][(block_size * z + index) * REGION_BLOCKS + w] = tmp[j][z * REGION_BLOCKS +
-                                                                                                   w];
+                    }
+
+                    else if (companion == error) {
+                        for (int w = 0; w < REGION_BLOCKS; w++) {
+                            _mm256_stream_si256(&data_ptr[error][(block_size * z + index) * REGION_BLOCKS + w],tmp[j][z * REGION_BLOCKS + w]);
+                        }
                     }
                 }
         s++;
