@@ -18,7 +18,8 @@ uint32_t _pow(uint32_t a, int b);
 void msr_encode(int len, int n, int k, uint8_t **data,uint8_t **memory_allocated);
 
 
-int msr_regenerate(int len, int n, int k, uint8_t **chunks, uint8_t *memory_allocated);
+//len should be the length of collected data.
+int msr_regenerate(int len, int n, int k, uint8_t **data, uint8_t *output);
 
 void init(int n,int k);
 
