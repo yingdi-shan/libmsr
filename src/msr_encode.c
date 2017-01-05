@@ -282,14 +282,14 @@ static void invert_matrix_rs(int *errors, int error_cnt, int n, int k) {
             }
 
         }
-
+    /*
     for (int i = 0; i < error_cnt; i++) {
         for (j = 0; j < n; j++) {
             printf("%u ", final_matrix[i][j]);
         }
         printf("\n");
     }
-
+    */
     for (int i = 0; i < error_cnt; i++)
         for (j = 0; j < n; j++) {
                 u_final_matrix[i][j] = gf_mul(final_matrix[i][j], u);
@@ -387,26 +387,6 @@ int test_companion(int i, int z, int q, int t) {
     assert(com_com == i);
     int com_com_z = permute(new_z, com_y, com_x, q, t);
     assert(com_com_z == z);
-
-}
-
-
-static void solve_equation(int *errors, int error_cnt, uint8_t *kappa) {
-
-
-    encode_t res[error_cnt];
-    memset(res, 0, sizeof(res));
-    uint8_t *res_ptr = (uint8_t *) res;
-
-    for (int j = 0; j < error_cnt; j++) {
-        //res[j] = 0;
-        for (int k = 0; k < error_cnt; k++)
-            for (int w = 0; w < sizeof(encode_t); w++)
-                res_ptr[j * sizeof(encode_t) + w] ^= gf_mul(inv_matrix[j][k], kappa[k * sizeof(encode_t) + w]);
-    }
-
-    for (int j = 0; j < error_cnt; j++)
-        ((encode_t *) kappa)[j] = res[j];
 
 }
 
@@ -518,135 +498,7 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
 }
 
 
-static void
-sequential_decode(uint8_t **data, int index, int block_size, int *errors, int error_cnt,
-                  int *sigmas,
-                  int q, int t) {
 
-    //clock_t start = clock();
-    //printf("Sequential Decode:\n");
-    int n = q * t;
-    uint32_t z_total = _pow(q, t);
-    int K = n - q;
-
-    int sigma_max = 0;
-    for (int z = 0; z < z_total; z++) {
-
-        if (sigmas[z] > sigma_max)
-            sigma_max = sigmas[z];
-    }
-
-    //printf("Time for compute sigma:%lf\n",(clock() - start)/(double)(CLOCKS_PER_SEC));
-
-    bool is_error[n];
-
-    memset(is_error, 0, sizeof(bool) * n);
-
-    for (int i = 0; i < error_cnt; i++)
-        is_error[errors[i]] = 1;
-
-    uint8_t a = gf_div(1, gf_mul(1 ^ u, 1 ^ u));
-    uint8_t b = gf_div(u, gf_mul(1 ^ u, 1 ^ u));
-
-    assert(a ^ gf_mul(b, u) == 1);
-    assert(b ^ gf_mul(a, u) == u);
-
-    int s = 0;
-
-
-    for (int i = 0; i < n; i++)
-        data_ptr[i] = (encode_t *) data[i];
-
-    while (s <= sigma_max) {
-        for (int z = 0; z < z_total; z++)
-            if (sigmas[z] == s) {
-                //printf("%d\n",z);
-                int z_index = (block_size * z + index) * REGION_BLOCKS;
-
-
-                for (int j = 0; j < error_cnt; j++)
-                    for (int w = 0; w < REGION_BLOCKS; w++)
-                        kappa[j][w] = _mm256_set1_epi8(0);
-
-
-                for (int i = 0; i < n; i++) {
-                    if (!is_error[i]) {
-
-                        for (int j = 0; j < error_cnt; j++)
-                            for (int w = 0; w < REGION_BLOCKS; w++) {
-                                kappa[j][w] = xor_region(kappa[j][w],
-                                                         multiply_region(data_ptr[i][z_index + w], theta[j][i]));
-                            }
-                    }
-                    int companion = node_companion[i][z];
-                    if (i != companion && (!is_error[companion] || !is_error[i])) {
-                        int z_comp = z_companion[i][z];
-
-                        for (int j = 0; j < error_cnt; j++)
-                            for (int w = 0; w < REGION_BLOCKS; w++) {
-                                kappa[j][w] = xor_region(kappa[j][w], multiply_region(
-                                        data_ptr[companion][(block_size * z_comp + index) * REGION_BLOCKS + w],
-                                        u_theta[j][i]));
-                            }
-                    }
-
-                }
-
-
-                for (int j = 0; j < error_cnt; j++) {
-
-                    for (int w = 0; w < REGION_BLOCKS; w++)
-                        data_ptr[errors[j]][z_index + w] = _mm256_set1_epi8(0);
-
-                    for (int k = 0; k < error_cnt; k++)
-                        for (int w = 0; w < REGION_BLOCKS; w++)
-                            data_ptr[errors[j]][z_index + w] = xor_region(data_ptr[errors[j]][z_index + w],
-                                                                          multiply_region(kappa[k][w],
-                                                                                          inv_matrix[j][k]));
-                }
-
-            }
-
-
-        for (int z = 0; z < z_total; z++)
-            if (sigmas[z] == s) {
-
-                for (int j = 0; j < error_cnt; j++) {
-
-                    int error = errors[j];
-
-                    int companion = node_companion[error][z];
-                    int new_z = z_companion[error][z];
-
-                    if (companion < error && is_error[companion]) {
-
-                        for (int w = 0; w < REGION_BLOCKS; w++) {
-                            int z_pos = (block_size * z + index) * REGION_BLOCKS + w;
-                            int new_z_pos = (block_size * new_z + index) * REGION_BLOCKS + w;
-
-                            encode_t a_cur = xor_region(multiply_region(data_ptr[error][z_pos], a),
-                                                        multiply_region(data_ptr[companion][new_z_pos], b));
-
-                            encode_t a_companion = xor_region(multiply_region(data_ptr[error][z_pos], b),
-                                                              multiply_region(data_ptr[companion][new_z_pos], a));
-
-
-                            data_ptr[error][z_pos] = a_cur;
-                            data_ptr[companion][new_z_pos] = a_companion;
-                        }
-
-                    }
-
-                }
-
-
-            }
-
-
-        s++;
-
-    }
-}
 
 encode_t tmp[MAX_NODE][MAX_STRIPE * REGION_BLOCKS + 3];
 
@@ -654,7 +506,7 @@ int err_id[MAX_NODE];
 
 
 static void
-sequential_decode_fast(uint8_t **data, int index, int block_size, int *errors, int error_cnt,
+sequential_decode(uint8_t **data, int index, int block_size, int *errors, int error_cnt,
                        int *sigmas,
                        int q, int t) {
     int n = q * t;
@@ -775,13 +627,10 @@ sequential_decode_fast(uint8_t **data, int index, int block_size, int *errors, i
                         int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
 
                         for (int w = 0; w < REGION_BLOCKS; w++) {
-                            for (int e = 0; e < 4; e++) {
-                                tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
+                                tmp[j][z * REGION_BLOCKS + w] = xor_region(tmp[j][z * REGION_BLOCKS + w],
                                                                            multiply_region(data_ptr[companion][
                                                                                                    new_z_index + w],
-                                                                                                  u_final_matrix[e][error]));
-                            }
-
+                                                                                                  u));
                             if(j != error_cnt -1)
                             _mm_prefetch(&data_ptr[node_companion[errors[j + 1]][z]][
                                                  (block_size * z_companion[errors[j + 1]][z] + index) * REGION_BLOCKS + w],
@@ -842,7 +691,7 @@ sequential_decode_fast(uint8_t **data, int index, int block_size, int *errors, i
 
 
 static void
-systematic_encode_with_prefetch(uint8_t **data, int index, int block_size, int *errors, int error_cnt,
+systematic_encode(uint8_t **data, int index, int block_size, int *errors, int error_cnt,
                                 int *sigmas,
                                 int q, int t) {
 
@@ -895,7 +744,7 @@ systematic_encode_with_prefetch(uint8_t **data, int index, int block_size, int *
                     int z_index = (block_size * z + index) * REGION_BLOCKS;
 
                     int companion = node_companion[j][z];
-                    if (companion != j && !is_error[companion]) {
+                    if (companion != j) {
 
                         int new_z = z_companion[j][z];
 
@@ -931,10 +780,6 @@ systematic_encode_with_prefetch(uint8_t **data, int index, int block_size, int *
                                                                                                     index) *
                                                                                                    REGION_BLOCKS + w],
                                                                                            theta[errors[e] - k][j]));
-                                //tmp[e][z*REGION_BLOCKS + w] = mid;
-                                //tmp[errors[e]][(block_size * z + index) * REGION_BLOCKS + w]=mid;
-
-                                //_mm256_stream_si256(&data_ptr[errors[e]][(block_size * z + index) * REGION_BLOCKS + w],mid);
                             }
                             _mm_prefetch(&data_ptr[j + 1][(block_size * z + index) * REGION_BLOCKS + w], _MM_HINT_NTA);
                             _mm_prefetch(&data_ptr[node_companion[j + 1][z]][
@@ -942,7 +787,6 @@ systematic_encode_with_prefetch(uint8_t **data, int index, int block_size, int *
                                          _MM_HINT_NTA);
 
                         }
-                        //print_encode(tmp[0][z*REGION_BLOCKS + w]);
 
                     }
 
@@ -1054,8 +898,8 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
 
     for (index = 0; index < block_size; index++) {
         if (is_systematic)
-            sequential_decode_fast(data, index, block_size, errors, error_cnt, sigmas, q, t);
+            systematic_encode(data, index, block_size, errors, error_cnt, sigmas, q, t);
         else
-            sequential_decode_fast(data, index, block_size, errors, error_cnt, sigmas, q, t);
+            sequential_decode(data, index, block_size, errors, error_cnt, sigmas, q, t);
     }
 }
