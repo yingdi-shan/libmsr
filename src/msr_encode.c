@@ -622,7 +622,7 @@ sequential_decode(uint8_t **data, int index, int block_size, int *errors, int er
                     int error = errors[j];
 
                     int companion = node_companion[error][z];
-                    if (error != companion) {
+                    if (error != companion && !is_error[companion]) {
                         int new_z = z_companion[error][z];
                         int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
 
@@ -689,7 +689,7 @@ sequential_decode(uint8_t **data, int index, int block_size, int *errors, int er
 
 }
 
-
+/*
 static void
 systematic_encode(uint8_t **data, int index, int block_size, int *errors, int error_cnt,
                                 int *sigmas,
@@ -791,6 +791,7 @@ systematic_encode(uint8_t **data, int index, int block_size, int *errors, int er
                     }
 
                 }
+
             }
 
 
@@ -837,7 +838,7 @@ systematic_encode(uint8_t **data, int index, int block_size, int *errors, int er
     }
 
 }
-
+*/
 
 void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocated) {
     int r = n - k;
@@ -897,9 +898,6 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
 
 
     for (index = 0; index < block_size; index++) {
-        if (is_systematic)
-            systematic_encode(data, index, block_size, errors, error_cnt, sigmas, q, t);
-        else
-            sequential_decode(data, index, block_size, errors, error_cnt, sigmas, q, t);
+        sequential_decode(data, index, block_size, errors, error_cnt, sigmas, q, t);
     }
 }

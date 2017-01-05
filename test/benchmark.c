@@ -16,7 +16,7 @@
 #define BLOCK_SIZE 512
 #define DATA_SIZE (1<<30)
 
-#define TEST_LOOP (1)
+#define TEST_LOOP (5)
 
 int main(){
     gf_init();
