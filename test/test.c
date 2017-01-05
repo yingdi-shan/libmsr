@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
     for(int i=0;i<k;i++) {
         posix_memalign((void *)&(data[i]),64,sizeof(uint8_t) * DATA_SIZE / k);
         for(int j=0;j<DATA_SIZE/k;j++)
-            data[i][j] = rand() % 256;
+            data[i][j] = rand()%256;
         //memset(data[i], 0xaa, sizeof(uint8_t) * DATA_SIZE / k);
     }
 
@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
             input[j] = NULL;
 
         int ok_cnt = 0;
-        //int num[] = {0,1,2,3,4,5,6,8};
+        //int num[] = {1,2,3,4,5,6,7,8};
         while (ok_cnt < k) {
             //int ok_id = num[ok_cnt];
             int ok_id = rand() % n;

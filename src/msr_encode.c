@@ -206,39 +206,96 @@ static uint8_t theta[MAX_NODE][MAX_NODE];
 static uint8_t u_theta[MAX_NODE][MAX_NODE];
 
 static uint8_t inv_matrix[MAX_NODE][MAX_NODE];
+static uint8_t final_matrix[MAX_NODE][MAX_NODE];
+static uint8_t u_final_matrix[MAX_NODE][MAX_NODE];
+static uint8_t matrix[MAX_NODE][MAX_NODE];
 
-
-static void invert_matrix(int *errors, int error_cnt) {
+static void invert_matrix_rs(int *errors, int error_cnt, int n, int k) {
 
     memset(inv_matrix, 0, sizeof(inv_matrix));
 
     for (int i = 0; i < error_cnt; i++)
         inv_matrix[i][i] = 1;
 
-    uint8_t matrix[error_cnt][error_cnt];
-    for (int i = 0; i < error_cnt; i++)
-        for (int j = 0; j < error_cnt; j++)
-            matrix[i][j] = theta[i][errors[j]];
+    bool is_error[n];
 
+    memset(is_error, 0, sizeof(bool) * n);
+
+    for (int i = 0; i < error_cnt; i++)
+        is_error[errors[i]] = 1;
+    int j;
+
+    memset(matrix, 0, sizeof(matrix));
+    for (int i = 0; i < error_cnt; i++)
+        for (j = 0; j < error_cnt; j++) {
+            matrix[i][j] = theta[i][errors[j]];
+        }
+
+
+    //Gaussian Elimination
     for (int i = 0; i < error_cnt; i++) {
+
+        if (!matrix[i][i]) {
+            for (j = i + 1; j < error_cnt; j++)
+                if (matrix[j][i])
+                    break;
+            assert(j != error_cnt);
+
+            for (int t = 0; t < error_cnt; t++) {
+                uint8_t tmp = matrix[i][t];
+                matrix[i][t] = matrix[j][t];
+                matrix[j][t] = tmp;
+
+                tmp = inv_matrix[i][t];
+                inv_matrix[i][t] = inv_matrix[j][t];
+                inv_matrix[j][t] = tmp;
+
+            }
+
+        }
+
         uint8_t f = matrix[i][i];
 
-        for (int j = 0; j < error_cnt; j++) {
+        for (j = 0; j < error_cnt; j++) {
             matrix[i][j] = gf_div(matrix[i][j], f);
             inv_matrix[i][j] = gf_div(inv_matrix[i][j], f);
         }
-        //kappa[i] = gf_div(kappa[i], f);
 
-        for (int j = 0; j < error_cnt; j++)
+        for (j = 0; j < error_cnt; j++)
             if (i != j) {
                 f = matrix[j][i];
-                for (int k = 0; k < error_cnt; k++) {
-                    matrix[j][k] ^= gf_mul(matrix[i][k], f);
-                    inv_matrix[j][k] ^= gf_mul(inv_matrix[i][k], f);
-                    //kappa[j] ^= gf_mul(kappa[i], f);
+                for (int t = 0; t < error_cnt; t++) {
+                    matrix[j][t] ^= gf_mul(matrix[i][t], f);
+                    inv_matrix[j][t] ^= gf_mul(inv_matrix[i][t], f);
                 }
             }
     }
+
+    memset(final_matrix, 0, sizeof(final_matrix));
+
+
+    for (int i = 0; i < error_cnt; i++)
+        for (j = 0; j < n; j++) {
+
+            for (int t = 0; t < error_cnt; t++) {
+                final_matrix[i][j] ^= gf_mul(inv_matrix[i][t], theta[t][j]);
+            }
+
+        }
+
+    for (int i = 0; i < error_cnt; i++) {
+        for (j = 0; j < n; j++) {
+            printf("%u ", final_matrix[i][j]);
+        }
+        printf("\n");
+    }
+
+    for (int i = 0; i < error_cnt; i++)
+        for (j = 0; j < n; j++) {
+                u_final_matrix[i][j] = gf_mul(final_matrix[i][j], u);
+        }
+
+
 }
 
 static void invert_matrix_regenerate(int x0, int y0, int q, int t) {
@@ -291,15 +348,7 @@ static void init_companion(int n, int k) {
             node_companion[i][z] = get_bit(z, y, q, t) + y * q;
             z_companion[i][z] = permute(z, y, x, q, t);
         }
-/*
-    for(int z=0;z<stripe;z++) {
-        printf("%d: ",z);
-        for (int i = 0; i < n; i++) {
-            printf("%d:%d ", i, node_companion[i][z]);
-        }
-        printf("\n");
-    }
-*/
+
 }
 
 static void init_theta(int n, int k) {
@@ -323,64 +372,6 @@ void init(int n, int k) {
     init_theta(n, k);
 }
 
-/*
-static void
-compute_kappa(uint32_t stripe_size, int q, int t, int z, bool *errors, int error_cnt,
-              uint8_t *minus_kappa) {
-
-    for (int j = 0; j < error_cnt * sizeof(encode_t); j++)
-        minus_kappa[j] = 0;
-
-    int n = q * t;
-
-    int k = n - q;
-
-
-    for (int i = 0; i < k; i++)
-        if (!errors[i]) {
-            for (int j = 0; j < error_cnt; j++)
-                for (int w = 0; w < sizeof(encode_t); w++) {
-
-                    minus_kappa[j * sizeof(encode_t) + w] ^= gf_mul(theta[j][i],
-                                                                    ((uint8_t *) data_chunk[i])[z * sizeof(encode_t) +
-                                                                                                w]);
-                }
-        }
-
-    for (int i = k; i < k + error_cnt; i++)
-        if (!errors[i])
-            for (int w = 0; w < sizeof(encode_t); w++)
-                minus_kappa[(i - k) * sizeof(encode_t) + w] ^= ((uint8_t *) data_chunk[i])[z * sizeof(encode_t) + w];
-
-
-    for (int i = 0; i < k; i++) {
-        int companion = node_companion[i][z];
-
-        if (i != companion && (!errors[companion] || !errors[i])) {
-            int z_comp = z_companion[i][z];
-            for (int j = 0; j < error_cnt; j++)
-                for (int w = 0; w < sizeof(encode_t); w++) {
-                    minus_kappa[j * sizeof(encode_t) + w] ^= gf_mul(u_theta[j][i],
-                                                                    ((uint8_t *) data_chunk[companion])[
-                                                                            z_comp * sizeof(encode_t) + w]);
-                }
-        }
-    }
-
-    for (int i = k; i < k + error_cnt; i++) {
-        int companion = node_companion[i][z];
-
-        if (i != companion && (!errors[companion] || !errors[i]))
-            for (int w = 0; w < sizeof(encode_t); w++) {
-                minus_kappa[(i - k) * sizeof(encode_t) + w] ^= gf_mul(u,
-                                                                      ((uint8_t *) data_chunk[companion])[
-                                                                              z_companion[i][z] * sizeof(encode_t) +
-                                                                              w]);
-            }
-    }
-
-}
-*/
 int test_companion(int i, int z, int q, int t) {
     int x = i % q;
     int y = i / q;
@@ -429,6 +420,7 @@ static int compute_sigma(int *errors, int error_cnt, int q, int t, int z) {
     }
     return sigma;
 }
+
 encode_t *data_ptr[MAX_NODE];
 encode_t kappa[MAX_NODE][REGION_BLOCKS + 3];
 
@@ -577,26 +569,19 @@ sequential_decode(uint8_t **data, int index, int block_size, int *errors, int er
                         kappa[j][w] = _mm256_set1_epi8(0);
 
 
-                for (int i = 0; i < K; i++)
+                for (int i = 0; i < n; i++) {
                     if (!is_error[i]) {
+
                         for (int j = 0; j < error_cnt; j++)
                             for (int w = 0; w < REGION_BLOCKS; w++) {
                                 kappa[j][w] = xor_region(kappa[j][w],
                                                          multiply_region(data_ptr[i][z_index + w], theta[j][i]));
                             }
                     }
-
-
-                for (int i = K; i < K + error_cnt; i++)
-                    if (!is_error[i])
-                        for (int w = 0; w < REGION_BLOCKS; w++)
-                            kappa[i - K][w] = xor_region(data_ptr[i][z_index + w], kappa[i - K][w]);
-
-
-                for (int i = 0; i < K; i++) {
                     int companion = node_companion[i][z];
                     if (i != companion && (!is_error[companion] || !is_error[i])) {
                         int z_comp = z_companion[i][z];
+
                         for (int j = 0; j < error_cnt; j++)
                             for (int w = 0; w < REGION_BLOCKS; w++) {
                                 kappa[j][w] = xor_region(kappa[j][w], multiply_region(
@@ -604,17 +589,7 @@ sequential_decode(uint8_t **data, int index, int block_size, int *errors, int er
                                         u_theta[j][i]));
                             }
                     }
-                }
 
-
-                for (int i = K; i < K + error_cnt; i++) {
-                    int companion = node_companion[i][z];
-                    int z_comp = z_companion[i][z];
-                    if (i != companion && (!is_error[companion] || !is_error[i]))
-                        for (int w = 0; w < REGION_BLOCKS; w++) {
-                            kappa[i - K][w] = xor_region(kappa[i - K][w], multiply_region(
-                                    data_ptr[companion][(block_size * z_comp + index) * REGION_BLOCKS + w], u));
-                        }
                 }
 
 
@@ -676,6 +651,195 @@ sequential_decode(uint8_t **data, int index, int block_size, int *errors, int er
 encode_t tmp[MAX_NODE][MAX_STRIPE * REGION_BLOCKS + 3];
 
 int err_id[MAX_NODE];
+
+
+static void
+sequential_decode_fast(uint8_t **data, int index, int block_size, int *errors, int error_cnt,
+                       int *sigmas,
+                       int q, int t) {
+    int n = q * t;
+    int k = n - q;
+
+    int stripe_size = _pow(q, t);
+
+    int sigma_max = 0;
+    for (int z = 0; z < stripe_size; z++) {
+        if (sigmas[z] > sigma_max)
+            sigma_max = sigmas[z];
+    }
+
+    bool is_error[n];
+
+    memset(is_error, 0, sizeof(bool) * n);
+
+    for (int i = 0; i < error_cnt; i++)
+        is_error[errors[i]] = 1;
+
+    uint8_t a = gf_div(1, gf_mul(1 ^ u, 1 ^ u));
+    uint8_t b = gf_div(u, gf_mul(1 ^ u, 1 ^ u));
+
+    assert(a ^ gf_mul(b, u) == 1);
+    assert(b ^ gf_mul(a, u) == u);
+
+    int s = 0;
+    //memcpy(data_buffer,data_chunk,sizeof(data_buffer));
+
+    encode_t *data_ptr[n];
+    for (int i = 0; i < n; i++)
+        data_ptr[i] = (encode_t *) data[i];
+
+    //memset(res,0,sizeof(res));
+    for (int i = 0; i < error_cnt; i++)
+        for (int z = 0; z < stripe_size * REGION_BLOCKS; z++)
+            tmp[i][z] = _mm256_setzero_si256();
+
+    for (int i = 0; i < error_cnt; i++)
+        err_id[errors[i]] = i;
+
+    int ok[k + 1];
+    ok[k] = 0;
+    int j = 0;
+    for (int i = 0; i < n; i++) {
+        if (!is_error[i])
+            ok[j++] = i;
+    }
+
+
+    //The construction of B.
+    while (s <= sigma_max) {
+        for (int z = 0; z < stripe_size; z++)
+            if (sigmas[z] == s) {
+
+                for (j = 0; j < k; j++) {
+                    int node_id = ok[j];
+
+                    int z_index = (block_size * z + index) * REGION_BLOCKS;
+
+                    int companion = node_companion[node_id][z];
+
+                    if (companion != node_id) {
+                        int new_z = z_companion[node_id][z];
+                        int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
+
+                        for (int w = 0; w < REGION_BLOCKS; w++) {
+                            encode_t a_cur = xor_region(data_ptr[node_id][z_index + w],
+                                                        multiply_region(data_ptr[companion][new_z_index + w], u));
+
+
+                            for (int e = 0; e < 4; e++)
+                                tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
+                                                                           multiply_region(a_cur,
+                                                                                           final_matrix[e][node_id]));
+
+
+                            _mm_prefetch(&data_ptr[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w],
+                                         _MM_HINT_NTA);
+
+                            _mm_prefetch(&data_ptr[node_companion[ok[j + 1]][z]][
+                                                 (block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w],
+                                         _MM_HINT_NTA);
+
+
+                        }
+
+
+                    } else if (companion == node_id) {
+                        for (int w = 0; w < REGION_BLOCKS; w++) {
+                            for (int e = 0; e < 4; e++) {
+
+                                tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
+                                                                           multiply_region(data_ptr[node_id][
+                                                                                                   (block_size * z +
+                                                                                                    index) *
+                                                                                                   REGION_BLOCKS + w],
+                                                                                           final_matrix[e][node_id]));
+
+                            }
+                            _mm_prefetch(&data_ptr[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w],
+                                         _MM_HINT_NTA);
+                            _mm_prefetch(&data_ptr[node_companion[ok[j + 1]][z]][
+                                                 (block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w],
+                                         _MM_HINT_NTA);
+
+                        }
+
+                    }
+                }
+
+                for (j = 0; j < error_cnt; j++) {
+                    int error = errors[j];
+
+                    int companion = node_companion[error][z];
+                    if (error != companion) {
+                        int new_z = z_companion[error][z];
+                        int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
+
+                        for (int w = 0; w < REGION_BLOCKS; w++) {
+                            for (int e = 0; e < 4; e++) {
+                                tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
+                                                                           multiply_region(data_ptr[companion][
+                                                                                                   new_z_index + w],
+                                                                                                  u_final_matrix[e][error]));
+                            }
+
+                            if(j != error_cnt -1)
+                            _mm_prefetch(&data_ptr[node_companion[errors[j + 1]][z]][
+                                                 (block_size * z_companion[errors[j + 1]][z] + index) * REGION_BLOCKS + w],
+                                         _MM_HINT_NTA);
+
+
+                        }
+                    }
+
+                }
+
+
+            }
+
+        for (int z = 0; z < stripe_size; z++)
+            if (sigmas[z] == s)
+
+                for (j = 0; j < error_cnt; j++) {
+
+                    int error = errors[j];
+
+                    int companion = node_companion[error][z];
+                    int new_z = z_companion[error][z];
+
+                    int comp_id = err_id[companion];
+
+                    if (companion < error && is_error[companion]) {
+                        for (int w = 0; w < REGION_BLOCKS; w++) {
+                            int z_index = z * REGION_BLOCKS + w;
+                            int new_z_index = new_z * REGION_BLOCKS + w;
+
+                            encode_t a_cur
+                                    = xor_region(multiply_region(tmp[j][z_index], a),
+                                                 multiply_region(
+                                                         tmp[comp_id][new_z_index], b));
+
+                            encode_t a_companion = xor_region(
+                                    multiply_region(tmp[j][z_index], b),
+                                    multiply_region(tmp[comp_id][new_z_index], a));
+
+
+                            _mm256_stream_si256(&data_ptr[error][(block_size * z + index) * REGION_BLOCKS + w], a_cur);
+                            _mm256_stream_si256(&data_ptr[companion][(block_size * new_z + index) * REGION_BLOCKS + w],
+                                                a_companion);
+                        }
+                    } else if (companion == error || !is_error[companion]) {
+                        for (int w = 0; w < REGION_BLOCKS; w++) {
+                            _mm256_stream_si256(&data_ptr[error][(block_size * z + index) * REGION_BLOCKS + w],
+                                                tmp[j][z * REGION_BLOCKS + w]);
+                        }
+                    }
+                }
+
+        s++;
+    }
+
+}
+
 
 static void
 systematic_encode_with_prefetch(uint8_t **data, int index, int block_size, int *errors, int error_cnt,
@@ -761,7 +925,7 @@ systematic_encode_with_prefetch(uint8_t **data, int index, int block_size, int *
                     } else if (companion == j) {
                         for (int w = 0; w < REGION_BLOCKS; w++) {
                             for (int e = 0; e < 4; e++) {
-                                tmp[e][z*REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
+                                tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
                                                                            multiply_region(data_ptr[j][
                                                                                                    (block_size * z +
                                                                                                     index) *
@@ -814,14 +978,14 @@ systematic_encode_with_prefetch(uint8_t **data, int index, int block_size, int *
                                     multiply_region(tmp[comp_id][new_z_index], a));
 
 
-                            _mm256_stream_si256(&data_ptr[error][(block_size * z + index) * REGION_BLOCKS + w],a_cur);
-                            _mm256_stream_si256(&data_ptr[companion][(block_size * new_z + index) * REGION_BLOCKS + w],a_companion);
+                            _mm256_stream_si256(&data_ptr[error][(block_size * z + index) * REGION_BLOCKS + w], a_cur);
+                            _mm256_stream_si256(&data_ptr[companion][(block_size * new_z + index) * REGION_BLOCKS + w],
+                                                a_companion);
                         }
-                    }
-
-                    else if (companion == error) {
+                    } else if (companion == error) {
                         for (int w = 0; w < REGION_BLOCKS; w++) {
-                            _mm256_stream_si256(&data_ptr[error][(block_size * z + index) * REGION_BLOCKS + w],tmp[j][z * REGION_BLOCKS + w]);
+                            _mm256_stream_si256(&data_ptr[error][(block_size * z + index) * REGION_BLOCKS + w],
+                                                tmp[j][z * REGION_BLOCKS + w]);
                         }
                     }
                 }
@@ -877,7 +1041,7 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
             data[i] = memory_allocated[index++];
         }
 
-    invert_matrix(errors, error_cnt);
+    invert_matrix_rs(errors, error_cnt, n, k);
 
     //is_systematic = false;
     int sigmas[stripe_size];
@@ -890,8 +1054,8 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
 
     for (index = 0; index < block_size; index++) {
         if (is_systematic)
-            systematic_encode_with_prefetch(data, index, block_size, errors, error_cnt, sigmas, q, t);
+            sequential_decode_fast(data, index, block_size, errors, error_cnt, sigmas, q, t);
         else
-            sequential_decode(data, index, block_size, errors, error_cnt, sigmas, q, t);
+            sequential_decode_fast(data, index, block_size, errors, error_cnt, sigmas, q, t);
     }
 }

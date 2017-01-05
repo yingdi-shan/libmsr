@@ -16,7 +16,7 @@
 #define BLOCK_SIZE 512
 #define DATA_SIZE (1<<30)
 
-#define TEST_LOOP ((1<<30)/DATA_SIZE)
+#define TEST_LOOP (1)
 
 int main(){
     gf_init();
@@ -105,7 +105,7 @@ int main(){
 
     printf("Total Clock Time: %.2fs\n",(clock() - start)/(double)CLOCKS_PER_SEC);
 
-    printf("Regenerate Throughput: %.2fMB/s\n",TEST_LOOP * (double)DATA_SIZE/((clock() - start)/(double)CLOCKS_PER_SEC) * 1e-6 );
+    printf("Regenerate Throughput: %.2fMB/s\n",TEST_LOOP * (double)DATA_SIZE/k/((clock() - start)/(double)CLOCKS_PER_SEC) * 1e-6 );
 
     free(memory);
 
