@@ -41,7 +41,6 @@ int main(int argc, char **argv) {
         posix_memalign((void *)&(data[i]),64,sizeof(uint8_t) * DATA_SIZE / k);
         for(int j=0;j<DATA_SIZE/k;j++)
             data[i][j] = rand()%256;
-        //rand()%256;
         //memset(data[i], 0xaa, sizeof(uint8_t) * DATA_SIZE / k);
     }
 
@@ -49,8 +48,6 @@ int main(int argc, char **argv) {
         memory_pre_allocated[i] = malloc(sizeof(uint8_t) * DATA_SIZE / k);
         posix_memalign((void *)&(memory_pre_allocated[i]),64,sizeof(uint8_t) * DATA_SIZE / k);
     }
-
-
 
     msr_encode(DATA_SIZE/k,n,k,data,memory_pre_allocated);
 
@@ -114,10 +111,9 @@ int main(int argc, char **argv) {
     printf("-----------Begin to test regenerate-----------\n");
     test_turn = 12;
     for (int i = 0; i < test_turn; i++) {
-        printf("Turn %d:\n", i);
-
-        int y_0 = i / q;
-        int x_0 = i % q;
+        int id = i;
+        int y_0 = id / q;
+        int x_0 = id % q;
         uint8_t *input[n];
         for (int j = 0; j < n; j++){
             if(j!=i){
@@ -144,7 +140,6 @@ int main(int argc, char **argv) {
         printf("Check OK!\n");
 
         free(memory);
-
 
     }
 
