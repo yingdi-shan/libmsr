@@ -19,7 +19,6 @@
 int main(int argc, char **argv) {
     srand(time(0));
     //srand(2);
-    gf_init();
 
     int n = 12;
     int r = 4;
@@ -45,7 +44,6 @@ int main(int argc, char **argv) {
     }
 
     for(int i=0;i<r;i++) {
-        memory_pre_allocated[i] = malloc(sizeof(uint8_t) * DATA_SIZE / k);
         posix_memalign((void *)&(memory_pre_allocated[i]),64,sizeof(uint8_t) * DATA_SIZE / k);
     }
 
@@ -86,15 +84,6 @@ int main(int argc, char **argv) {
 
         msr_encode(DATA_SIZE/k,n,k,input,memory_pre_allocated);
 
-        /*
-        for (int j = 0; j < n; j++) {
-            printf("%d after repaired: ", j);
-            for (int s = 0; s < _pow(q, t); s++) {
-                printf("%0x ", input[j][s*BLOCK_SIZE]);
-            }
-            printf("\n");
-        }
-        */
 
         for(int j=0;j<n;j++)
             assert(!memcmp(input[j],data[j],DATA_SIZE/k));
@@ -140,8 +129,14 @@ int main(int argc, char **argv) {
         printf("Check OK!\n");
 
         free(memory);
+        for(int j=0;j<n;j++)
+            if(j!=i)
+                free(input[j]);
 
     }
+
+    for(int i=0;i<n;i++)
+        free(data[i]);
 
     return 0;
 

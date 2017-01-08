@@ -13,13 +13,12 @@
 #include <mm_malloc.h>
 
 #define STRIPE_SIZE (_pow(q,t) * q * (t-1))
-#define BLOCK_SIZE 512
+#define REGION_SIZE 512
 #define DATA_SIZE (1<<30)
 
-#define TEST_LOOP (5)
+#define TEST_LOOP ((1<<30)/DATA_SIZE)
 
 int main(){
-    gf_init();
 
     int n = 12;
     int r = 4;

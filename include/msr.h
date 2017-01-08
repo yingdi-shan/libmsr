@@ -8,7 +8,7 @@
 uint32_t _pow(uint32_t a, int b);
 
 /**@brief Fill the unavailable data.
- * @param len Length of each block of data. len should be at least 32KB.
+ * @param len Length of each block of data. len should be at least 32KB for 8+4.
  * @param n The number of total blocks.
  * @param k The number of systematic blocks.
  * @param data Array of pointers to data buffer. If the pointer is NULL,the corresponding data will be generated.
@@ -17,8 +17,14 @@ uint32_t _pow(uint32_t a, int b);
  */
 void msr_encode(int len, int n, int k, uint8_t **data,uint8_t **memory_allocated);
 
-
-//len should be the length of collected data.
+/**@brief Regenerate the unavailable data.
+ * @param len Length of each block of data. len should be the length of collected data.
+ * @param n The number of total blocks.
+ * @param k The number of systematic blocks.
+ * @param data Array of pointers to data buffer. If the pointer is NULL,the corresponding data will be generated.
+ * @param output The address to the regenerated data.
+ * @returns none
+ */
 int msr_regenerate(int len, int n, int k, uint8_t **data, uint8_t *output);
 
 
