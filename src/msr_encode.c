@@ -11,6 +11,7 @@
 #include "gf.h"
 
 #include <immintrin.h>
+#include <time.h>
 
 
 #define MAX_NODE 16
@@ -24,14 +25,22 @@
 
 typedef __m256i encode_t;
 
+
 #define REGION_SIZE 512
 #define REGION_BLOCKS (REGION_SIZE/sizeof(encode_t))
 
+uint32_t _pow(uint32_t a, int b) {
+    uint32_t ret = 1;
+    for (int i = 1; i <= b; i++)
+        ret *= a;
+    return ret;
+}
 
-__m256i mask_lo, mask_hi;
 
-__m256i low_table[256];
-__m256i high_table[256];
+static __m256i mask_lo, mask_hi;
+
+static __m256i low_table[256];
+static __m256i high_table[256];
 
 void init_avx2() {
     mask_lo = _mm256_set1_epi8(0x0f);
@@ -79,7 +88,7 @@ inline __m256i xor_region(__m256i input1, __m256i input2) {
 
 }
 
-inline __m256i multiply_region(__m256i input, uint8_t x) {
+inline static __m256i multiply_region(__m256i input, uint8_t x) {
 
     __m256i low = _mm256_and_si256(input, mask_lo);
     __m256i high = _mm256_and_si256(input, mask_hi);
@@ -113,8 +122,8 @@ void print_encode(__m256i x) {
 #endif
 
 
-uint32_t GfPow[GF_SIZE << 1];
-uint32_t GfLog[GF_SIZE << 1];
+static uint32_t GfPow[GF_SIZE << 1];
+static uint32_t GfLog[GF_SIZE << 1];
 
 void gf_init() {
     uint32_t i;
@@ -150,12 +159,6 @@ inline uint8_t gf_div(uint32_t a, uint32_t b) {
     assert(0);
 }
 
-uint32_t _pow(uint32_t a, int b) {
-    uint32_t ret = 1;
-    for (int i = 1; i <= b; i++)
-        ret *= a;
-    return ret;
-}
 
 
 inline int get_bit(int z, int y, int q, int t) {
@@ -192,108 +195,105 @@ uint8_t gf_pow(int x, int y) {
 
 const uint8_t u = 3;
 
+//Read only after the init, so can be placed globally thread-safely.
 static uint8_t node_companion[MAX_NODE][MAX_STRIPE];
 static uint8_t z_companion[MAX_NODE][MAX_STRIPE];
 static uint8_t theta[MAX_NODE][MAX_NODE];
 static uint8_t u_theta[MAX_NODE][MAX_NODE];
 
-static uint8_t inv_matrix[MAX_NODE][MAX_NODE];
-static uint8_t final_matrix[MAX_NODE][MAX_NODE];
-static uint8_t u_final_matrix[MAX_NODE][MAX_NODE];
-static uint8_t matrix[MAX_NODE][MAX_NODE];
 
-static void invert_matrix_rs(int *errors, int error_cnt, int n, int k) {
 
-    memset(inv_matrix, 0, sizeof(inv_matrix));
+static void init_companion(int n, int k) {
+    assert(n <= MAX_NODE);
+    int q = n - k;
+    int t = n / q;
+    int stripe = _pow(q, t);
+    assert(stripe <= MAX_STRIPE);
 
-    for (int i = 0; i < error_cnt; i++)
-        inv_matrix[i][i] = 1;
+    for (int i = 0; i < n; i++)
+        for (int z = 0; z < stripe; z++) {
+            int x = i % q;
+            int y = i / q;
+            node_companion[i][z] = get_bit(z, y, q, t) + y * q;
+            z_companion[i][z] = permute(z, y, x, q, t);
+        }
+}
 
-    bool is_error[n];
+static void init_theta(int n, int k) {
+    memset(theta, 0, sizeof(theta));
 
-    memset(is_error, 0, sizeof(bool) * n);
-
-    for (int i = 0; i < error_cnt; i++)
-        is_error[errors[i]] = 1;
-    int j;
-
-    memset(matrix, 0, sizeof(matrix));
-    for (int i = 0; i < error_cnt; i++)
-        for (j = 0; j < error_cnt; j++) {
-            matrix[i][j] = theta[i][errors[j]];
+    for (int i = 0; i < n - k; i++)
+        for (int j = 0; j < k; j++) {
+            theta[i][j] = gf_div(1, j ^ (i + k));
+            u_theta[i][j] = gf_mul(u, theta[i][j]);
         }
 
-
-    //Gaussian Elimination
-    for (int i = 0; i < error_cnt; i++) {
-
-        if (!matrix[i][i]) {
-            for (j = i + 1; j < error_cnt; j++)
-                if (matrix[j][i])
-                    break;
-            assert(j != error_cnt);
-
-            for (int t = 0; t < error_cnt; t++) {
-                uint8_t tmp = matrix[i][t];
-                matrix[i][t] = matrix[j][t];
-                matrix[j][t] = tmp;
-
-                tmp = inv_matrix[i][t];
-                inv_matrix[i][t] = inv_matrix[j][t];
-                inv_matrix[j][t] = tmp;
-
-            }
-
-        }
-
-        uint8_t f = matrix[i][i];
-
-        for (j = 0; j < error_cnt; j++) {
-            matrix[i][j] = gf_div(matrix[i][j], f);
-            inv_matrix[i][j] = gf_div(inv_matrix[i][j], f);
-        }
-
-        for (j = 0; j < error_cnt; j++)
-            if (i != j) {
-                f = matrix[j][i];
-                for (int t = 0; t < error_cnt; t++) {
-                    matrix[j][t] ^= gf_mul(matrix[i][t], f);
-                    inv_matrix[j][t] ^= gf_mul(inv_matrix[i][t], f);
-                }
-            }
+    for (int i = 0; i < n - k; i++) {
+        theta[i][i + k] = 1;
+        u_theta[i][i + k] = u;
     }
-
-    memset(final_matrix, 0, sizeof(final_matrix));
-
-
-    for (int i = 0; i < error_cnt; i++)
-        for (j = 0; j < n; j++) {
-
-            for (int t = 0; t < error_cnt; t++) {
-                final_matrix[i][j] ^= gf_mul(inv_matrix[i][t], theta[t][j]);
-            }
-
-        }
-    /*
-    for (int i = 0; i < error_cnt; i++) {
-        for (j = 0; j < n; j++) {
-            printf("%u ", final_matrix[i][j]);
-        }
-        printf("\n");
-    }
-    */
-    for (int i = 0; i < error_cnt; i++)
-        for (j = 0; j < n; j++) {
-                u_final_matrix[i][j] = gf_mul(final_matrix[i][j], u);
-        }
-
 
 }
 
-static void invert_matrix_regenerate(int x0, int y0, int q, int t) {
+void init(int n, int k) {
+    assert(n % (n-k) == 0);
+    gf_init();
+    init_companion(n, k);
+    init_theta(n, k);
+}
+
+
+//the number of each node range from 0 to n-1.
+static int compute_sigma(int *errors, int error_cnt, int q, int t, int z) {
+    int sigma = 0;
+    for (int i = 0; i < error_cnt; i++) {
+        if (errors[i] % q == get_bit(z, errors[i] / q, q, t)) {
+            sigma++;
+        }
+    }
+    return sigma;
+}
+
+
+
+int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *memory) {
+    int i;
+    int q = n - k;
+    int t = n / q;
+    int stripe_size = _pow(q, t);
+    int beta = stripe_size / q;
+
+
+    int block_size = len / beta / REGION_SIZE;
+    int index;
+
+    int error_id = -1;
+    for (i = 0; i < n; i++)
+        if (!data_collected[i]) {
+            error_id = i;
+        }
+
+    assert(error_id != -1);
+
+    int y_0 = error_id / q;
+    int x_0 = error_id % q;
+
+    encode_t *mem_ptr = (encode_t *) memory;
+
+    encode_t *data_ptr[MAX_NODE];
+    encode_t kappa[MAX_NODE][REGION_BLOCKS + 3];
+
+    for (i = 0; i < n; i++)
+        data_ptr[i] = (encode_t *) data_collected[i];
+
+    uint8_t inv_matrix[MAX_NODE][MAX_NODE];
+    uint8_t final_matrix[MAX_NODE][MAX_NODE];
+    uint8_t u_final_matrix[MAX_NODE][MAX_NODE];
+
     memset(inv_matrix, 0, sizeof(inv_matrix));
-    int i,j,k;
-    int n=q*t;
+    n=q*t;
+
+    int j;
 
     for (i = 0; i < q; i++)
         inv_matrix[i][i] = 1;
@@ -301,8 +301,8 @@ static void invert_matrix_regenerate(int x0, int y0, int q, int t) {
     uint8_t matrix[q][q];
     for (i = 0; i < q; i++)
         for (j = 0; j < q; j++) {
-            int id = y0 * q + j;
-            if (j == x0)
+            int id = y_0 * q + j;
+            if (j == x_0)
                 matrix[i][j] = theta[i][id];
             else
                 matrix[i][j] = gf_mul(u, theta[i][id]);
@@ -353,14 +353,7 @@ static void invert_matrix_regenerate(int x0, int y0, int q, int t) {
             }
 
         }
-    /*
-    for (int i = 0; i < error_cnt; i++) {
-        for (j = 0; j < n; j++) {
-            printf("%u ", final_matrix[i][j]);
-        }
-        printf("\n");
-    }
-    */
+
     for (i = 0; i < q; i++)
         for (j = 0; j < n; j++) {
             u_final_matrix[i][j] = gf_mul(final_matrix[i][j], u);
@@ -368,96 +361,9 @@ static void invert_matrix_regenerate(int x0, int y0, int q, int t) {
 
 
 
-}
-
-
-static void init_companion(int n, int k) {
-    assert(n <= MAX_NODE);
-    int q = n - k;
-    int t = n / q;
-    int stripe = _pow(q, t);
-    assert(stripe <= MAX_STRIPE);
-
-    for (int i = 0; i < n; i++)
-        for (int z = 0; z < stripe; z++) {
-            int x = i % q;
-            int y = i / q;
-            node_companion[i][z] = get_bit(z, y, q, t) + y * q;
-            z_companion[i][z] = permute(z, y, x, q, t);
-        }
-
-}
-
-static void init_theta(int n, int k) {
-    memset(theta, 0, sizeof(theta));
-
-    for (int i = 0; i < n - k; i++)
-        for (int j = 0; j < k; j++) {
-            theta[i][j] = gf_div(1, j ^ (i + k));
-            u_theta[i][j] = gf_mul(u, theta[i][j]);
-        }
-
-    for (int i = 0; i < n - k; i++) {
-        theta[i][i + k] = 1;
-        u_theta[i][i + k] = u;
-    }
-
-}
-
-void init(int n, int k) {
-    gf_init();
-    init_companion(n, k);
-    init_theta(n, k);
-}
-
-
-//the number of each node range from 0 to n-1.
-static int compute_sigma(int *errors, int error_cnt, int q, int t, int z) {
-    int sigma = 0;
-    for (int i = 0; i < error_cnt; i++) {
-        if (errors[i] % q == get_bit(z, errors[i] / q, q, t)) {
-            sigma++;
-        }
-    }
-    return sigma;
-}
-
-encode_t *data_ptr[MAX_NODE];
-encode_t kappa[MAX_NODE][REGION_BLOCKS + 3];
-encode_t tmp[MAX_NODE][MAX_STRIPE * REGION_BLOCKS + 3];
-
-int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *memory) {
-    int i;
-    int q = n - k;
-    int t = n / q;
-    int stripe_size = _pow(q, t);
-    int beta = stripe_size / q;
-
-
-    int block_size = len / beta / REGION_SIZE;
-    int index;
-
-    int error_id = -1;
-    for (i = 0; i < n; i++)
-        if (!data_collected[i]) {
-            error_id = i;
-        }
-
-    assert(error_id != -1);
-
-    int y_0 = error_id / q;
-    int x_0 = error_id % q;
-
-    encode_t *mem_ptr = (encode_t *) memory;
-
-    for (i = 0; i < n; i++)
-        data_ptr[i] = (encode_t *) data_collected[i];
-
-    invert_matrix_regenerate(x_0, y_0, q, t);
 
     int z_num[MAX_STRIPE];
     int z_pos[MAX_STRIPE];
-    int j;
     memset(z_pos, -1, sizeof(z_pos));
     for (int z_id = 0; z_id < beta; z_id++) {
         z_num[z_id] = (z_id / _pow(q, t - y_0 - 1) * q + x_0) * _pow(q, t - y_0 - 1) + z_id % _pow(q, t - y_0 - 1);
@@ -841,60 +747,28 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
     }
 }
 
-int err_id[MAX_NODE];
 
 
-static void
-sequential_decode(uint8_t **data, int index, int block_size, int *errors, int error_cnt,
-                       int *sigmas,
+uint8_t a = 71;
+uint8_t b = 201;
+
+static void inline
+sequential_decode(int index, int block_size, int *errors, int error_cnt,
+                       int *sigmas, int sigma_max, int *err_id, bool *is_error,int *ok,encode_t *data_ptr[MAX_NODE],encode_t tmp[MAX_NODE][MAX_STRIPE * REGION_BLOCKS + 3],uint8_t final_matrix[MAX_NODE][MAX_NODE],
                        int q, int t) {
     int n = q * t;
     int k = n - q;
 
     int stripe_size = _pow(q, t);
 
-    int sigma_max = 0;
-    for (int z = 0; z < stripe_size; z++) {
-        if (sigmas[z] > sigma_max)
-            sigma_max = sigmas[z];
-    }
-
-    bool is_error[n];
-
-    memset(is_error, 0, sizeof(bool) * n);
-
-    for (int i = 0; i < error_cnt; i++)
-        is_error[errors[i]] = 1;
-
-    uint8_t a = gf_div(1, gf_mul(1 ^ u, 1 ^ u));
-    uint8_t b = gf_div(u, gf_mul(1 ^ u, 1 ^ u));
-
     int s = 0;
-
-    encode_t *data_ptr[n];
-    for (int i = 0; i < n; i++)
-        data_ptr[i] = (encode_t *) data[i];
-
-    for (int i = 0; i < error_cnt; i++)
-        for (int z = 0; z < stripe_size * REGION_BLOCKS; z++)
-            tmp[i][z] = _mm256_setzero_si256();
-
-    for (int i = 0; i < error_cnt; i++)
-        err_id[errors[i]] = i;
-
-    int ok[k + 1];
-    ok[k] = 0;
     int j = 0;
-    for (int i = 0; i < n; i++) {
-        if (!is_error[i])
-            ok[j++] = i;
-    }
-
 
     //The construction of B.
     while (s <= sigma_max) {
         for (int z = 0; z < stripe_size; z++)
             if (sigmas[z] == s) {
+                //Use four 'if' to enable loop unrolling, which can improve the performance for about 30%.
                 if(error_cnt == 1) {
                     for (j = 0; j < k; j++) {
                         int node_id = ok[j];
@@ -1094,8 +968,6 @@ sequential_decode(uint8_t **data, int index, int block_size, int *errors, int er
                                 _mm_prefetch(&data_ptr[node_companion[ok[j + 1]][z]][
                                                      (block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w],
                                              _MM_HINT_NTA);
-
-
                             }
 
                         } else if (companion == node_id) {
@@ -1198,6 +1070,7 @@ sequential_decode(uint8_t **data, int index, int block_size, int *errors, int er
 }
 
 void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocated) {
+    clock_t start = clock();
     int r = n - k;
 
     assert(n % r == 0);
@@ -1218,6 +1091,10 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
 
     assert(error_cnt <= 4);
 
+    int err_id[MAX_NODE];
+    bool is_error[MAX_NODE];
+    int ok[MAX_NODE + 1];
+    encode_t *data_ptr[MAX_NODE];
 
     int errors[error_cnt];
 
@@ -1225,8 +1102,6 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
     for (int i = 0; i < n; i++)
         if (!data[i])
             errors[index++] = i;
-
-    bool is_error[n];
 
     memset(is_error, 0, sizeof(bool) * n);
 
@@ -1241,8 +1116,6 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
             data[i] = memory_allocated[index++];
         }
 
-    invert_matrix_rs(errors, error_cnt, n, k);
-
     int sigmas[stripe_size];
 
     for (int z = 0; z < stripe_size; z++)
@@ -1250,8 +1123,106 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
 
     int block_size = len / stripe_size / REGION_SIZE;
 
+    for (int i = 0; i < n; i++)
+        data_ptr[i] = (encode_t *) data[i];
+
+    encode_t tmp[MAX_NODE][MAX_STRIPE * REGION_BLOCKS + 3];
+    for (int i = 0; i < error_cnt; i++)
+        for (int z = 0; z < stripe_size * REGION_BLOCKS; z++)
+            tmp[i][z] = _mm256_setzero_si256();
+
+    for (int i = 0; i < error_cnt; i++)
+        err_id[errors[i]] = i;
+
+
+    ok[k] = 0;
+    int j = 0;
+    for (int i = 0; i < n; i++) {
+        if (!is_error[i])
+            ok[j++] = i;
+    }
+
+    int sigma_max = 0;
+    for (int z = 0; z < stripe_size; z++) {
+        if (sigmas[z] > sigma_max)
+            sigma_max = sigmas[z];
+    }
+
+    uint8_t inv_matrix[MAX_NODE][MAX_NODE];
+    uint8_t final_matrix[MAX_NODE][MAX_NODE];
+    uint8_t u_final_matrix[MAX_NODE][MAX_NODE];
+    uint8_t matrix[MAX_NODE][MAX_NODE];
+
+    memset(inv_matrix, 0, sizeof(inv_matrix));
+
+    for (int i = 0; i < error_cnt; i++)
+        inv_matrix[i][i] = 1;
+
+
+
+
+    memset(matrix, 0, sizeof(matrix));
+    for (int i = 0; i < error_cnt; i++)
+        for (j = 0; j < error_cnt; j++) {
+            matrix[i][j] = theta[i][errors[j]];
+        }
+
+
+    for (int i = 0; i < error_cnt; i++) {
+
+        if (!matrix[i][i]) {
+            for (j = i + 1; j < error_cnt; j++)
+                if (matrix[j][i])
+                    break;
+            assert(j != error_cnt);
+
+            for (int t = 0; t < error_cnt; t++) {
+                uint8_t tmp = matrix[i][t];
+                matrix[i][t] = matrix[j][t];
+                matrix[j][t] = tmp;
+
+                tmp = inv_matrix[i][t];
+                inv_matrix[i][t] = inv_matrix[j][t];
+                inv_matrix[j][t] = tmp;
+
+            }
+
+        }
+
+        uint8_t f = matrix[i][i];
+
+        for (j = 0; j < error_cnt; j++) {
+            matrix[i][j] = gf_div(matrix[i][j], f);
+            inv_matrix[i][j] = gf_div(inv_matrix[i][j], f);
+        }
+
+        for (j = 0; j < error_cnt; j++)
+            if (i != j) {
+                f = matrix[j][i];
+                for (int t = 0; t < error_cnt; t++) {
+                    matrix[j][t] ^= gf_mul(matrix[i][t], f);
+                    inv_matrix[j][t] ^= gf_mul(inv_matrix[i][t], f);
+                }
+            }
+    }
+
+    memset(final_matrix, 0, sizeof(final_matrix));
+
+
+    for (int i = 0; i < error_cnt; i++)
+        for (j = 0; j < n; j++) {
+            for (int t = 0; t < error_cnt; t++) {
+                final_matrix[i][j] ^= gf_mul(inv_matrix[i][t], theta[t][j]);
+            }
+        }
+
+
 
     for (index = 0; index < block_size; index++) {
-        sequential_decode(data, index, block_size, errors, error_cnt, sigmas, q, t);
+        sequential_decode(index, block_size, errors, error_cnt, sigmas,sigma_max, err_id,is_error,ok,data_ptr,tmp,final_matrix,q, t);
     }
+
+    //printf("Total Clock Time: %.2fs\n",(clock() - start)/(double)CLOCKS_PER_SEC);
+
+    //printf("Encode Throughput: %.2fMB/s\n",(double)len * k/((clock() - start)/(double)CLOCKS_PER_SEC) * 1e-6 );
 }

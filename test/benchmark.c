@@ -16,7 +16,7 @@
 #define REGION_SIZE 512
 #define DATA_SIZE (1<<30)
 
-#define TEST_LOOP ((1<<30)/DATA_SIZE)
+#define TEST_LOOP (10)
 
 int main(){
 
@@ -59,7 +59,7 @@ int main(){
 
     printf("Total Clock Time: %.2fs\n",(clock() - start)/(double)CLOCKS_PER_SEC);
 
-    printf("Encode Throughput: %.2fMB/s\n",TEST_LOOP * (double)DATA_SIZE/((clock() - start)/(double)CLOCKS_PER_SEC) * 1e-6 );
+    printf("Encode Throughput: %.2fMB/s\n",TEST_LOOP * (double)DATA_SIZE/((clock() - start)/(double)CLOCKS_PER_SEC) * 1e-6);
 
 
     start = clock();

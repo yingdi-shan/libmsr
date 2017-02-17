@@ -5,13 +5,14 @@
 #ifndef MSR_H
 #define MSR_H
 
-uint32_t _pow(uint32_t a, int b);
+#include <inttypes.h>
+//uint32_t _pow(uint32_t a, int b);
 
 /**@brief Fill the unavailable data.
  * @param len Length of each block of data. len should be at least 32KB for 8+4.
  * @param n The number of total blocks.
  * @param k The number of systematic blocks.
- * @param data Array of pointers to data buffer. If the pointer is NULL,the corresponding data will be generated.
+ * @param data Array of pointers to data buffer. If the pointer is NULL,the corresponding data will be generated.j
  * @param memory_allocated Array of pointers to the pre-allocated memory.
  * @returns none
  */
