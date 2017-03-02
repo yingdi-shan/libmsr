@@ -14,7 +14,7 @@
 
 #define STRIPE_SIZE (_pow(q,t) * q * (t-1))
 #define REGION_SIZE 512
-#define DATA_SIZE (1<<30)
+#define DATA_SIZE (STRIPE_SIZE * (1<<21) )
 
 #define TEST_LOOP (10)
 

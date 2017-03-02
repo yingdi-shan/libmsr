@@ -94,6 +94,7 @@ inline static __m256i multiply_region(__m256i input, uint8_t x) {
     __m256i high = _mm256_and_si256(input, mask_hi);
 
     __m256i low_t = low_table[x], high_t = high_table[x];
+    //high = _mm256_srli_epi64(high,4);
     high = _mm256_srli_epi16(high, 4);
 
     __m256i right = _mm256_shuffle_epi8(low_t, low);
@@ -160,7 +161,6 @@ inline uint8_t gf_div(uint32_t a, uint32_t b) {
 }
 
 
-
 inline int get_bit(int z, int y, int q, int t) {
     return z / _pow(q, t - y - 1) % q;
 }
@@ -202,7 +202,6 @@ static uint8_t theta[MAX_NODE][MAX_NODE];
 static uint8_t u_theta[MAX_NODE][MAX_NODE];
 
 
-
 static void init_companion(int n, int k) {
     assert(n <= MAX_NODE);
     int q = n - k;
@@ -236,7 +235,7 @@ static void init_theta(int n, int k) {
 }
 
 void init(int n, int k) {
-    assert(n % (n-k) == 0);
+    assert(n % (n - k) == 0);
     gf_init();
     init_companion(n, k);
     init_theta(n, k);
@@ -253,7 +252,6 @@ static int compute_sigma(int *errors, int error_cnt, int q, int t, int z) {
     }
     return sigma;
 }
-
 
 
 int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *memory) {
@@ -291,7 +289,7 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
     uint8_t u_final_matrix[MAX_NODE][MAX_NODE];
 
     memset(inv_matrix, 0, sizeof(inv_matrix));
-    n=q*t;
+    n = q * t;
 
     int j;
 
@@ -360,8 +358,6 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
         }
 
 
-
-
     int z_num[MAX_STRIPE];
     int z_pos[MAX_STRIPE];
     memset(z_pos, -1, sizeof(z_pos));
@@ -372,17 +368,16 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
 
     int z_comp_pos[MAX_NODE][MAX_STRIPE];
 
-    for(int i=0;i<n;i++)
-        for(int z=0;z<stripe_size;z++)
+    for (int i = 0; i < n; i++)
+        for (int z = 0; z < stripe_size; z++)
             z_comp_pos[i][z] = z_pos[z_companion[i][z]];
-
 
 
     for (index = 0; index < block_size; index++) {
         for (int z_id = 0; z_id < beta; z_id++) {
-            memset(kappa,0,sizeof(kappa));
+            memset(kappa, 0, sizeof(kappa));
 
-            if(q==1) {
+            if (q == 1) {
 
                 for (j = 0; j < n; j++) {
 
@@ -468,7 +463,7 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
                         }
                     }
                 }
-            }else if(q==2) {
+            } else if (q == 2) {
 
                 for (j = 0; j < n; j++) {
 
@@ -554,7 +549,7 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
                         }
                     }
                 }
-            }else if(q==3) {
+            } else if (q == 3) {
 
                 for (j = 0; j < n; j++) {
 
@@ -640,7 +635,7 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
                         }
                     }
                 }
-            }else if(q==4) {
+            } else if (q == 4) {
 
                 for (j = 0; j < n; j++) {
 
@@ -726,7 +721,7 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
                         }
                     }
                 }
-            }else{
+            } else {
                 assert(0);
             }
 
@@ -739,7 +734,7 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
                 //    printf("%d %d %d\n",z_id,z,j);
 
                 for (int w = 0; w < REGION_BLOCKS; w++)
-                    _mm256_stream_si256(mem_ptr+ z_index +w,kappa[j][w]);
+                    _mm256_stream_si256(mem_ptr + z_index + w, kappa[j][w]);
             }
 
 
@@ -748,14 +743,14 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
 }
 
 
-
 uint8_t a = 71;
 uint8_t b = 201;
 
 static void inline
 sequential_decode(int index, int block_size, int *errors, int error_cnt,
-                       int *sigmas, int sigma_max, int *err_id, bool *is_error,int *ok,encode_t *data_ptr[MAX_NODE],encode_t tmp[MAX_NODE][MAX_STRIPE * REGION_BLOCKS + 3],uint8_t final_matrix[MAX_NODE][MAX_NODE],
-                       int q, int t) {
+                  int *sigmas, int sigma_max, int *err_id, bool *is_error, int *ok, encode_t *data_ptr[MAX_NODE],
+                  encode_t tmp[MAX_NODE][MAX_STRIPE * REGION_BLOCKS + 3], uint8_t final_matrix[MAX_NODE][MAX_NODE],
+                  int q, int t) {
     int n = q * t;
     int k = n - q;
 
@@ -769,7 +764,7 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
         for (int z = 0; z < stripe_size; z++)
             if (sigmas[z] == s) {
                 //Use four 'if' to enable loop unrolling, which can improve the performance for about 30%.
-                if(error_cnt == 1) {
+                if (error_cnt == 1) {
                     for (j = 0; j < k; j++) {
                         int node_id = ok[j];
 
@@ -825,7 +820,7 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
 
                         }
                     }
-                }else if(error_cnt == 2){
+                } else if (error_cnt == 2) {
                     for (j = 0; j < k; j++) {
                         int node_id = ok[j];
 
@@ -882,7 +877,7 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                         }
                     }
 
-                }else if(error_cnt == 3){
+                } else if (error_cnt == 3) {
                     for (j = 0; j < k; j++) {
                         int node_id = ok[j];
 
@@ -939,7 +934,7 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                         }
                     }
 
-                }else if(error_cnt == 4){
+                } else if (error_cnt == 4) {
                     for (j = 0; j < k; j++) {
                         int node_id = ok[j];
 
@@ -994,7 +989,7 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                         }
                     }
 
-                }else{
+                } else {
                     assert(0);
                 }
 
@@ -1007,14 +1002,14 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                         int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
 
                         for (int w = 0; w < REGION_BLOCKS; w++) {
-                                tmp[j][z * REGION_BLOCKS + w] = xor_region(tmp[j][z * REGION_BLOCKS + w],
-                                                                           multiply_region(data_ptr[companion][
-                                                                                                   new_z_index + w],
-                                                                                                  u));
-                            if(j != error_cnt -1)
-                            _mm_prefetch(&data_ptr[node_companion[errors[j + 1]][z]][
-                                                 (block_size * z_companion[errors[j + 1]][z] + index) * REGION_BLOCKS + w],
-                                         _MM_HINT_NTA);
+                            tmp[j][z * REGION_BLOCKS + w] = xor_region(tmp[j][z * REGION_BLOCKS + w],
+                                                                       multiply_region(data_ptr[companion][
+                                                                                               new_z_index + w],
+                                                                                       u));
+                            if (j != error_cnt - 1)
+                                _mm_prefetch(&data_ptr[node_companion[errors[j + 1]][z]][
+                                                     (block_size * z_companion[errors[j + 1]][z] + index) * REGION_BLOCKS + w],
+                                             _MM_HINT_NTA);
 
 
                         }
@@ -1070,7 +1065,6 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
 }
 
 void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocated) {
-    clock_t start = clock();
     int r = n - k;
 
     assert(n % r == 0);
@@ -1150,15 +1144,12 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
 
     uint8_t inv_matrix[MAX_NODE][MAX_NODE];
     uint8_t final_matrix[MAX_NODE][MAX_NODE];
-    uint8_t u_final_matrix[MAX_NODE][MAX_NODE];
     uint8_t matrix[MAX_NODE][MAX_NODE];
 
     memset(inv_matrix, 0, sizeof(inv_matrix));
 
     for (int i = 0; i < error_cnt; i++)
         inv_matrix[i][i] = 1;
-
-
 
 
     memset(matrix, 0, sizeof(matrix));
@@ -1216,13 +1207,45 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
             }
         }
 
-
-
     for (index = 0; index < block_size; index++) {
-        sequential_decode(index, block_size, errors, error_cnt, sigmas,sigma_max, err_id,is_error,ok,data_ptr,tmp,final_matrix,q, t);
+        sequential_decode(index, block_size, errors, error_cnt, sigmas, sigma_max, err_id, is_error, ok, data_ptr, tmp,
+                          final_matrix, q, t);
     }
 
     //printf("Total Clock Time: %.2fs\n",(clock() - start)/(double)CLOCKS_PER_SEC);
 
     //printf("Encode Throughput: %.2fMB/s\n",(double)len * k/((clock() - start)/(double)CLOCKS_PER_SEC) * 1e-6 );
 }
+
+#define MAX_RS_NODE 64
+/*
+void rs_encode(int len,int row,int *errors, int k, int *alive, uint8_t **data,uint8_t **coding) {
+    //data (k * len)
+    //matrix (row * k)
+
+    assert(len % sizeof(encode_t) == 0);
+    int cur_row = 0;
+    encode_t *data_ptr[MAX_RS_NODE];
+    encode_t *coding_ptr[MAX_RS_NODE];
+
+    for (int i = 0; i < k; i++)
+        data_ptr[i] = (encode_t *) data[i];
+
+    for (int i = 0; i < row; i++)
+        coding_ptr[i] = (encode_t *) coding[i];
+
+    while (row >= 4) {
+        for (int i = 0; i < len; i += sizeof(encode_t)) {
+            for (int j = 0; j < k; j++)
+                for (int r = 0; r < 4; r++) {
+                    coding_ptr[cur_row + r][i] = xor_region(coding_ptr[cur_row + r][i],
+                                                            multiply_region(data_ptr[j][i], matrix[][]));
+                }
+        }
+        row -= 4;
+        cur_row += 4;
+    }
+
+
+}
+ */

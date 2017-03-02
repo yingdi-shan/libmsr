@@ -6,7 +6,6 @@
 #define MSR_H
 
 #include <inttypes.h>
-//uint32_t _pow(uint32_t a, int b);
 
 /**@brief Fill the unavailable data.
  * @param len Length of each block of data. len should be at least 32KB for 8+4.
@@ -30,5 +29,8 @@ int msr_regenerate(int len, int n, int k, uint8_t **data, uint8_t *output);
 
 
 void init(int n,int k);
+
+
+void rs_encode(int len,int row,int *errors, int k, int *alive, uint8_t **data,uint8_t **coding);
 
 #endif //MSR_H
