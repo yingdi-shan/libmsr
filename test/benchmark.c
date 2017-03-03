@@ -14,7 +14,7 @@
 
 #define STRIPE_SIZE (_pow(q,t) * q * (t-1))
 #define REGION_SIZE 512
-#define DATA_SIZE (STRIPE_SIZE * (1<<21) )
+#define DATA_SIZE (1<<30)
 
 #define TEST_LOOP (10)
 
@@ -37,7 +37,6 @@ int main(){
 
     for(int i=0;i<n;i++) {
         posix_memalign((void *)&(data[i]),64,sizeof(uint8_t) * DATA_SIZE / k);
-        //data[i] = malloc(sizeof(uint8_t) * DATA_SIZE / k);
         //Warm the memory up.
         memset(data[i], 0xaa, sizeof(uint8_t) * DATA_SIZE / k);
     }

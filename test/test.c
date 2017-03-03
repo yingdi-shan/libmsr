@@ -14,7 +14,7 @@
 
 #define STRIPE_SIZE (_pow(q,t) * q * (t-1))
 #define BLOCK_SIZE 512
-#define DATA_SIZE (STRIPE_SIZE * (1024))
+#define DATA_SIZE (STRIPE_SIZE * (4096))
 
 int main(int argc, char **argv) {
     srand(time(0));
@@ -38,9 +38,9 @@ int main(int argc, char **argv) {
 
     for(int i=0;i<k;i++) {
         posix_memalign((void *)&(data[i]),64,sizeof(uint8_t) * DATA_SIZE / k);
-        //for(int j=0;j<DATA_SIZE/k;j++)
-        //    data[i][j] = 0xaa;
-        memset(data[i], 0xaa, sizeof(uint8_t) * DATA_SIZE / k);
+        for(int j=0;j<DATA_SIZE/k;j++)
+            data[i][j] = rand()%256;
+       // memset(data[i], 0xaa, sizeof(uint8_t) * DATA_SIZE / k);
     }
 
     for(int i=0;i<r;i++) {
@@ -52,7 +52,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < n; i++) {
         printf("Original %d: ", i);
         for (int s = 0; s < 64; s++)
-            printf("%d ", data[i][s]);
+            printf("%x ", data[i][s]);
         printf("\n");
     }
     printf("-----------Begin to test decode-----------\n");

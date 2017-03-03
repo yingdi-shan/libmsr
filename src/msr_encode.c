@@ -201,6 +201,55 @@ static uint8_t z_companion[MAX_NODE][MAX_STRIPE];
 static uint8_t theta[MAX_NODE][MAX_NODE];
 static uint8_t u_theta[MAX_NODE][MAX_NODE];
 
+/*
+//For DFS.
+int fill[MAX_NODE][MAX_STRIPE];
+int pointer[MAX_NODE];
+char used[MAX_NODE][MAX_STRIPE];
+int reorder[MAX_NODE][MAX_STRIPE];
+
+bool dfs(int i,int z){
+    int next_i = (i+1) % 12;
+    int next_z = z + ((i+1)>=12);
+    if(next_z>=64)
+        return true;
+    if(fill[i][z] == -1){
+        for(int t=0;t<64;t++){
+
+            int node_comp = node_companion[i][t];
+            int comp = z_companion[i][t];
+            //printf("%d %d %d %d %d %d\n",i,z,t,node_comp,comp,pointer[node_comp]);
+            if(!used[node_comp][comp] && !used[i][t] && pointer[node_comp]<(z+1+(z%2==0))){
+                if(i!=node_comp) {
+                    used[node_comp][comp] = used[i][t] = 1;
+                    fill[i][z] = t;
+                    fill[node_comp][pointer[node_comp]] = comp;
+                    pointer[i]++;
+                    pointer[node_comp]++;
+                    if (dfs(next_i, next_z))
+                        return true;
+                    pointer[i]--;
+                    pointer[node_comp]--;
+                    fill[i][z] = -1;
+                    fill[node_comp][pointer[node_comp]] = -1;
+                    used[node_comp][comp] = used[i][t] = 0;
+                }else{
+                    used[i][t] = 1;
+                    fill[i][z] = t;
+                    pointer[i]++;
+                    if (dfs(next_i, next_z))
+                        return true;
+                    pointer[i]--;
+                    fill[i][z] = -1;
+                    used[i][t] = 0;
+                }
+            }
+        }
+        return false;
+    }else return dfs(next_i,next_z);
+
+}
+ */
 
 static void init_companion(int n, int k) {
     assert(n <= MAX_NODE);
@@ -216,7 +265,46 @@ static void init_companion(int n, int k) {
             node_companion[i][z] = get_bit(z, y, q, t) + y * q;
             z_companion[i][z] = permute(z, y, x, q, t);
         }
+
+
+/*
+    for(int i=0;i<n;i++)
+        for(int z=0;z<stripe;z++)
+            fill[i][z] = -1,used[i][z] = 0;
+
+    for(int i=0;i<n;i++)
+        pointer[i] = 0;
+
+    if(dfs(0,0)){
+
+        for(int i=0;i<n;i++) {
+            for (int z = 0; z < stripe; z++)
+                printf("%d ", fill[i][z]);
+            printf("\n");
+        }
+
+        for(int i=0;i<n;i++)
+            for(int z=0;z<stripe;z++)
+                reorder[i][fill[i][z]] = z;
+
+        for(int i=0;i<n;i++){
+            for(int pos=0;pos<stripe;pos++){
+                int z = fill[i][pos];
+                int node_comp = node_companion[i][z];
+                int com = z_companion[i][z];
+                int com_pos = reorder[node_comp][com];
+                printf("%d,%d:%d,%d\n",i,pos,node_comp,com_pos);
+            }
+            printf("\n");
+        }
+
+    }else
+        printf("No solution found");
+        */
 }
+
+
+
 
 static void init_theta(int n, int k) {
     memset(theta, 0, sizeof(theta));
@@ -1045,6 +1133,7 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                             encode_t a_companion = xor_region(
                                     multiply_region(tmp[j][z_index], b),
                                     multiply_region(tmp[comp_id][new_z_index], a));
+                            tmp[j][z_index] = tmp[comp_id][new_z_index] = _mm256_setzero_si256();
 
 
                             _mm256_stream_si256(&data_ptr[error][(block_size * z + index) * REGION_BLOCKS + w], a_cur);
@@ -1053,8 +1142,10 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                         }
                     } else if (companion == error || !is_error[companion]) {
                         for (int w = 0; w < REGION_BLOCKS; w++) {
+
                             _mm256_stream_si256(&data_ptr[error][(block_size * z + index) * REGION_BLOCKS + w],
                                                 tmp[j][z * REGION_BLOCKS + w]);
+                            tmp[j][z*REGION_BLOCKS + w] = _mm256_setzero_si256();
                         }
                     }
                 }
@@ -1208,6 +1299,7 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
         }
 
     for (index = 0; index < block_size; index++) {
+        //memset(tmp,0,sizeof(tmp));
         sequential_decode(index, block_size, errors, error_cnt, sigmas, sigma_max, err_id, is_error, ok, data_ptr, tmp,
                           final_matrix, q, t);
     }
@@ -1236,7 +1328,7 @@ void rs_encode(int len,int row,int *errors, int k, int *alive, uint8_t **data,ui
 
     while (row >= 4) {
         for (int i = 0; i < len; i += sizeof(encode_t)) {
-            for (int j = 0; j < k; j++)
+             for (int j = 0; j < k; j++)
                 for (int r = 0; r < 4; r++) {
                     coding_ptr[cur_row + r][i] = xor_region(coding_ptr[cur_row + r][i],
                                                             multiply_region(data_ptr[j][i], matrix[][]));
