@@ -16,7 +16,7 @@
 #define REGION_SIZE 512
 #define DATA_SIZE (1<<30)
 
-#define TEST_LOOP (10)
+#define TEST_LOOP (100)
 
 int main(){
 
@@ -58,20 +58,26 @@ int main(){
 
     printf("Total Clock Time: %.2fs\n",(clock() - start)/(double)CLOCKS_PER_SEC);
 
-    printf("Encode Throughput: %.2fMB/s\n",TEST_LOOP * (double)DATA_SIZE/((clock() - start)/(double)CLOCKS_PER_SEC) * 1e-6);
+    printf("Encode Throughput: %.2fMB/s\n",TEST_LOOP * (double)DATA_SIZE/k*n/((clock() - start)/(double)CLOCKS_PER_SEC) * 1e-6);
 
 
     start = clock();
 
     for(int loop=0;loop<TEST_LOOP;loop++) {
-        for(int i=0;i<r;i++)
-            data[i] = NULL;
+        int broken = 0;
+        while(broken < r){
+            int i = rand() % n;
+            if(data[i]){
+                data[i] = NULL;
+                broken ++;
+            }
+        }
         msr_encode(DATA_SIZE / k, n, k, data, memory_pre_allocated);
     }
 
     printf("Total Clock Time: %.2fs\n",(clock() - start)/(double)CLOCKS_PER_SEC);
 
-    printf("Decode Throughput: %.2fMB/s\n",TEST_LOOP * (double)DATA_SIZE/((clock() - start)/(double)CLOCKS_PER_SEC) * 1e-6 );
+    printf("Decode Throughput: %.2fMB/s\n",TEST_LOOP * (double)DATA_SIZE/k*n/((clock() - start)/(double)CLOCKS_PER_SEC) * 1e-6 );
 
     int error = 1;
 

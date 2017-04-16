@@ -80,10 +80,7 @@ void init_avx2() {
 }
 
 inline __m256i xor_region(__m256i input1, __m256i input2) {
-
     return _mm256_xor_si256(input1, input2);
-
-
 }
 
 inline static __m256i multiply_region(__m256i input, uint8_t x) {
@@ -456,10 +453,7 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
     encode_t kappa[MAX_NODE][REGION_BLOCKS + 3];
     memset(kappa, 0, sizeof(kappa));
     for (index = 0; index < block_size; index++) {
-
         for (int z_id = 0; z_id < beta; z_id++) {
-            //
-
             if (q == 1) {
 
                 for (j = 0; j < n; j++) {
@@ -671,14 +665,12 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
                                                          multiply_region(((encode_t **)data_collected)[companion][new_z_index + w],
                                                                          u_final_matrix[e][j]));
                             }
-
                         }
                     }
                 }
             } else {
                 assert(0);
             }
-
 
             for (j = 0; j < q; j++) {
 
@@ -700,6 +692,14 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
 
 uint8_t a = 71;
 uint8_t b = 201;
+
+static void inline prefetch(const __m256i *src){
+    _mm_prefetch(src,_MM_HINT_NTA);
+}
+
+static void inline store(encode_t *dst,encode_t val){
+    _mm256_stream_si256(dst,val);
+}
 
 static void inline
 sequential_decode(int index, int block_size, int *errors, int error_cnt,
@@ -740,14 +740,8 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                                     tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
                                                                                multiply_region(a_cur,
                                                                                                final_matrix[e][node_id]));
-
-
-                                _mm_prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w],
-                                             _MM_HINT_NTA);
-
-                                _mm_prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][
-                                                     (block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w],
-                                             _MM_HINT_NTA);
+                                prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][(block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w]);
 
 
                             }
@@ -765,11 +759,8 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                                                                                                final_matrix[e][node_id]));
 
                                 }
-                                _mm_prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w],
-                                             _MM_HINT_NTA);
-                                _mm_prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][
-                                                     (block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w],
-                                             _MM_HINT_NTA);
+                                prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][(block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w]);
 
                             }
 
@@ -797,13 +788,8 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                                                                                multiply_region(a_cur,
                                                                                                final_matrix[e][node_id]));
 
-
-                                _mm_prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w],
-                                             _MM_HINT_NTA);
-
-                                _mm_prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][
-                                                     (block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w],
-                                             _MM_HINT_NTA);
+                                prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][(block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w]);
 
 
                             }
@@ -821,12 +807,8 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                                                                                                final_matrix[e][node_id]));
 
                                 }
-                                _mm_prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w],
-                                             _MM_HINT_NTA);
-                                _mm_prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][
-                                                     (block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w],
-                                             _MM_HINT_NTA);
-
+                                prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][(block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w]);
                             }
 
                         }
@@ -854,15 +836,8 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                                                                                multiply_region(a_cur,
                                                                                                final_matrix[e][node_id]));
 
-
-                                _mm_prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w],
-                                             _MM_HINT_NTA);
-
-                                _mm_prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][
-                                                     (block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w],
-                                             _MM_HINT_NTA);
-
-
+                                prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][(block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w]);
                             }
 
                         } else if (companion == node_id) {
@@ -878,12 +853,8 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                                                                                                final_matrix[e][node_id]));
 
                                 }
-                                _mm_prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w],
-                                             _MM_HINT_NTA);
-                                _mm_prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][
-                                                     (block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w],
-                                             _MM_HINT_NTA);
-
+                                prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][(block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w]);
                             }
 
                         }
@@ -912,12 +883,8 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                                                                                                final_matrix[e][node_id]));
 
 
-                                _mm_prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w],
-                                             _MM_HINT_NTA);
-
-                                _mm_prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][
-                                                     (block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w],
-                                             _MM_HINT_NTA);
+                                prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][(block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w]);
                             }
 
                         } else if (companion == node_id) {
@@ -933,12 +900,8 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                                                                                                final_matrix[e][node_id]));
 
                                 }
-                                _mm_prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w],
-                                             _MM_HINT_NTA);
-                                _mm_prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][
-                                                     (block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w],
-                                             _MM_HINT_NTA);
-
+                                prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][(block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w]);
                             }
 
                         }
@@ -961,11 +924,7 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                                                                        multiply_region(((encode_t **)data_collected)[companion][
                                                                                                new_z_index + w],
                                                                                        u));
-                            if (j != error_cnt - 1)
-                                _mm_prefetch(&((encode_t **)data_collected)[node_companion[errors[j + 1]][z]][
-                                                     (block_size * z_companion[errors[j + 1]][z] + index) * REGION_BLOCKS + w],
-                                             _MM_HINT_NTA);
-
+                            prefetch(&((encode_t **)data_collected)[node_companion[errors[j + 1]][z]][(block_size * z_companion[errors[j + 1]][z] + index) * REGION_BLOCKS + w]);
 
                         }
                     }
@@ -1002,16 +961,12 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                                     multiply_region(tmp[comp_id][new_z_index], a));
                             tmp[j][z_index] = tmp[comp_id][new_z_index] = _mm256_setzero_si256();
 
-
-                            _mm256_stream_si256(&((encode_t **)data_collected)[error][(block_size * z + index) * REGION_BLOCKS + w], a_cur);
-                            _mm256_stream_si256(&((encode_t **)data_collected)[companion][(block_size * new_z + index) * REGION_BLOCKS + w],
-                                                a_companion);
+                            store(&((encode_t **)data_collected)[error][(block_size * z + index) * REGION_BLOCKS + w],a_cur);
+                            store(&((encode_t **)data_collected)[companion][(block_size * new_z + index) * REGION_BLOCKS + w],a_companion);
                         }
                     } else if (companion == error || !is_error[companion]) {
                         for (int w = 0; w < REGION_BLOCKS; w++) {
-
-                            _mm256_stream_si256(&((encode_t **)data_collected)[error][(block_size * z + index) * REGION_BLOCKS + w],
-                                                tmp[j][z * REGION_BLOCKS + w]);
+                            store(&((encode_t **)data_collected)[error][(block_size * z + index) * REGION_BLOCKS + w],tmp[j][z * REGION_BLOCKS + w]);
                             tmp[j][z*REGION_BLOCKS + w] = _mm256_setzero_si256();
                         }
                     }
