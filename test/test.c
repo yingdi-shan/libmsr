@@ -14,14 +14,15 @@
 
 #define STRIPE_SIZE (_pow(q,t) * q * (t-1))
 #define BLOCK_SIZE 512
-#define DATA_SIZE (STRIPE_SIZE * (4096))
+#define DATA_SIZE (STRIPE_SIZE * (512))
 
 int main(int argc, char **argv) {
     srand(time(0));
     //srand(2);
 
-    int n = 12;
-    int r = 4;
+
+    int r = 6;
+    int n = r * 3;
     int k = n - r;
 
     int q = r;
@@ -51,7 +52,7 @@ int main(int argc, char **argv) {
 
     for (int i = 0; i < n; i++) {
         printf("Original %d: ", i);
-        for (int s = 0; s < 64; s++)
+        for (int s = 0; s < 8; s++)
             printf("%x ", data[i][s]);
         printf("\n");
     }
@@ -98,7 +99,7 @@ int main(int argc, char **argv) {
     }
 
     printf("-----------Begin to test regenerate-----------\n");
-    test_turn = 12;
+    test_turn = n;
     for (int i = 0; i < test_turn; i++) {
         int id = i;
         int y_0 = id / q;

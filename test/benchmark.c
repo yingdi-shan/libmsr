@@ -14,14 +14,15 @@
 
 #define STRIPE_SIZE (_pow(q,t) * q * (t-1))
 #define REGION_SIZE 512
-#define DATA_SIZE (1<<30)
+#define DATA_SIZE (STRIPE_SIZE * REGION_SIZE *(1<<8))
 
-#define TEST_LOOP (100)
+#define TEST_LOOP (10)
 
 int main(){
 
-    int n = 12;
+
     int r = 4;
+    int n = r * 3;
     int k = n - r;
 
     int q = r;

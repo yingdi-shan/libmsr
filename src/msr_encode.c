@@ -14,8 +14,8 @@
 #include <time.h>
 
 
-#define MAX_NODE 16
-#define MAX_STRIPE 64
+#define MAX_NODE 24
+#define MAX_STRIPE 512
 
 
 #define AVX2
@@ -332,6 +332,17 @@ static int compute_sigma(int *errors, int error_cnt, int q, int t, int z) {
     return sigma;
 }
 
+static void inline prefetch(const __m256i *src){
+    _mm_prefetch(src,_MM_HINT_NTA);
+}
+
+static void inline prefetch_L1(const __m256i *src){
+    _mm_prefetch(src,_MM_HINT_T1);
+}
+
+static void inline store(encode_t *dst,encode_t val){
+    _mm256_stream_si256(dst,val);
+}
 
 int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *memory) {
     int i;
@@ -641,7 +652,8 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
                                 for (int e = 0; e < 4; e++)
                                     kappa[e][w] = xor_region(kappa[e][w], multiply_region(a_cur,
                                                                                           final_matrix[e][j]));
-
+                                prefetch(&((encode_t **)data_collected)[j+1][z_index + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[j+1][z]][(block_size * z_pos[z_companion[j+1][z]] + index) * REGION_BLOCKS + w]);
                             }
 
 
@@ -651,6 +663,8 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
                                     kappa[e][w] = xor_region(kappa[e][w], multiply_region(((encode_t **)data_collected)[j][z_index + w],
                                                                                           final_matrix[e][j]));
                                 }
+                                //prefetch(&((encode_t **)data_collected)[node_companion[j+1][z]][z_index + w]);
+                                //prefetch(&((encode_t **)data_collected)[j+1][z_index + w]);
                             }
 
                         }
@@ -665,10 +679,232 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
                                                          multiply_region(((encode_t **)data_collected)[companion][new_z_index + w],
                                                                          u_final_matrix[e][j]));
                             }
+                            prefetch(&((encode_t **)data_collected)[j+1][z_index + w]);
+                            prefetch(&((encode_t **)data_collected)[node_companion[j+1][z]][(block_size * z_pos[z_companion[j+1][z]] + index) * REGION_BLOCKS + w]);
                         }
                     }
                 }
-            } else {
+            } else if (q == 5) {
+
+                for (j = 0; j < n; j++) {
+
+                    int z = z_num[z_id];
+                    int z_index = (block_size * z_id + index) * REGION_BLOCKS;
+
+                    int companion = node_companion[j][z];
+
+                    if (data_collected[j]) {
+                        if (companion != j && data_collected[companion]) {
+                            int new_z = z_pos[z_companion[j][z]];
+                            int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
+
+
+                            for (int w = 0; w < REGION_BLOCKS; w++) {
+                                encode_t a_cur = xor_region(((encode_t **)data_collected)[j][z_index + w],
+                                                            multiply_region(((encode_t **)data_collected)[companion][new_z_index + w], u));
+
+
+                                for (int e = 0; e < 5; e++)
+                                    kappa[e][w] = xor_region(kappa[e][w], multiply_region(a_cur,
+                                                                                          final_matrix[e][j]));
+                                prefetch(&((encode_t **)data_collected)[j+1][z_index + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[j+1][z]][(block_size * z_pos[z_companion[j+1][z]] + index) * REGION_BLOCKS + w]);
+                            }
+
+
+                        } else {
+                            for (int w = 0; w < REGION_BLOCKS; w++) {
+                                for (int e = 0; e < 5; e++) {
+                                    kappa[e][w] = xor_region(kappa[e][w], multiply_region(((encode_t **)data_collected)[j][z_index + w],
+                                                                                          final_matrix[e][j]));
+                                }
+                                //prefetch(&((encode_t **)data_collected)[node_companion[j+1][z]][z_index + w]);
+                                //prefetch(&((encode_t **)data_collected)[j+1][z_index + w]);
+                            }
+
+                        }
+                    } else if (j != companion && data_collected[companion]) {
+
+                        int new_z = z_pos[z_companion[j][z]];
+                        int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
+
+                        for (int w = 0; w < REGION_BLOCKS; w++) {
+                            for (int e = 0; e < 5; e++) {
+                                kappa[e][w] = xor_region(kappa[e][w],
+                                                         multiply_region(((encode_t **)data_collected)[companion][new_z_index + w],
+                                                                         u_final_matrix[e][j]));
+                            }
+                            prefetch(&((encode_t **)data_collected)[j+1][z_index + w]);
+                            prefetch(&((encode_t **)data_collected)[node_companion[j+1][z]][(block_size * z_pos[z_companion[j+1][z]] + index) * REGION_BLOCKS + w]);
+                        }
+                    }
+                }
+            } else if (q == 6) {
+
+                for (j = 0; j < n; j++) {
+
+                    int z = z_num[z_id];
+                    int z_index = (block_size * z_id + index) * REGION_BLOCKS;
+
+                    int companion = node_companion[j][z];
+
+                    if (data_collected[j]) {
+                        if (companion != j && data_collected[companion]) {
+                            int new_z = z_pos[z_companion[j][z]];
+                            int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
+
+
+                            for (int w = 0; w < REGION_BLOCKS; w++) {
+                                encode_t a_cur = xor_region(((encode_t **)data_collected)[j][z_index + w],
+                                                            multiply_region(((encode_t **)data_collected)[companion][new_z_index + w], u));
+
+
+                                for (int e = 0; e < 6; e++)
+                                    kappa[e][w] = xor_region(kappa[e][w], multiply_region(a_cur,
+                                                                                          final_matrix[e][j]));
+                                prefetch(&((encode_t **)data_collected)[j+1][z_index + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[j+1][z]][(block_size * z_pos[z_companion[j+1][z]] + index) * REGION_BLOCKS + w]);
+                            }
+
+
+                        } else {
+                            for (int w = 0; w < REGION_BLOCKS; w++) {
+                                for (int e = 0; e < 6; e++) {
+                                    kappa[e][w] = xor_region(kappa[e][w], multiply_region(((encode_t **)data_collected)[j][z_index + w],
+                                                                                          final_matrix[e][j]));
+                                }
+                                //prefetch(&((encode_t **)data_collected)[node_companion[j+1][z]][z_index + w]);
+                                //prefetch(&((encode_t **)data_collected)[j+1][z_index + w]);
+                            }
+
+                        }
+                    } else if (j != companion && data_collected[companion]) {
+
+                        int new_z = z_pos[z_companion[j][z]];
+                        int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
+
+                        for (int w = 0; w < REGION_BLOCKS; w++) {
+                            for (int e = 0; e < 6; e++) {
+                                kappa[e][w] = xor_region(kappa[e][w],
+                                                         multiply_region(((encode_t **)data_collected)[companion][new_z_index + w],
+                                                                         u_final_matrix[e][j]));
+                            }
+                            prefetch(&((encode_t **)data_collected)[j+1][z_index + w]);
+                            prefetch(&((encode_t **)data_collected)[node_companion[j+1][z]][(block_size * z_pos[z_companion[j+1][z]] + index) * REGION_BLOCKS + w]);
+                        }
+                    }
+                }
+            }else if (q == 7) {
+
+                for (j = 0; j < n; j++) {
+
+                    int z = z_num[z_id];
+                    int z_index = (block_size * z_id + index) * REGION_BLOCKS;
+
+                    int companion = node_companion[j][z];
+
+                    if (data_collected[j]) {
+                        if (companion != j && data_collected[companion]) {
+                            int new_z = z_pos[z_companion[j][z]];
+                            int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
+
+
+                            for (int w = 0; w < REGION_BLOCKS; w++) {
+                                encode_t a_cur = xor_region(((encode_t **)data_collected)[j][z_index + w],
+                                                            multiply_region(((encode_t **)data_collected)[companion][new_z_index + w], u));
+
+
+                                for (int e = 0; e < 7; e++)
+                                    kappa[e][w] = xor_region(kappa[e][w], multiply_region(a_cur,
+                                                                                          final_matrix[e][j]));
+                                prefetch(&((encode_t **)data_collected)[j+1][z_index + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[j+1][z]][(block_size * z_pos[z_companion[j+1][z]] + index) * REGION_BLOCKS + w]);
+                            }
+
+
+                        } else {
+                            for (int w = 0; w < REGION_BLOCKS; w++) {
+                                for (int e = 0; e < 7; e++) {
+                                    kappa[e][w] = xor_region(kappa[e][w], multiply_region(((encode_t **)data_collected)[j][z_index + w],
+                                                                                          final_matrix[e][j]));
+                                }
+                                //prefetch(&((encode_t **)data_collected)[node_companion[j+1][z]][z_index + w]);
+                                //prefetch(&((encode_t **)data_collected)[j+1][z_index + w]);
+                            }
+
+                        }
+                    } else if (j != companion && data_collected[companion]) {
+
+                        int new_z = z_pos[z_companion[j][z]];
+                        int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
+
+                        for (int w = 0; w < REGION_BLOCKS; w++) {
+                            for (int e = 0; e < 7; e++) {
+                                kappa[e][w] = xor_region(kappa[e][w],
+                                                         multiply_region(((encode_t **)data_collected)[companion][new_z_index + w],
+                                                                         u_final_matrix[e][j]));
+                            }
+                            prefetch(&((encode_t **)data_collected)[j+1][z_index + w]);
+                            prefetch(&((encode_t **)data_collected)[node_companion[j+1][z]][(block_size * z_pos[z_companion[j+1][z]] + index) * REGION_BLOCKS + w]);
+                        }
+                    }
+                }
+            }else if (q == 8) {
+
+                for (j = 0; j < n; j++) {
+
+                    int z = z_num[z_id];
+                    int z_index = (block_size * z_id + index) * REGION_BLOCKS;
+
+                    int companion = node_companion[j][z];
+
+                    if (data_collected[j]) {
+                        if (companion != j && data_collected[companion]) {
+                            int new_z = z_pos[z_companion[j][z]];
+                            int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
+
+
+                            for (int w = 0; w < REGION_BLOCKS; w++) {
+                                encode_t a_cur = xor_region(((encode_t **)data_collected)[j][z_index + w],
+                                                            multiply_region(((encode_t **)data_collected)[companion][new_z_index + w], u));
+
+
+                                for (int e = 0; e < 8; e++)
+                                    kappa[e][w] = xor_region(kappa[e][w], multiply_region(a_cur,
+                                                                                          final_matrix[e][j]));
+                                prefetch(&((encode_t **)data_collected)[j+1][z_index + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[j+1][z]][(block_size * z_pos[z_companion[j+1][z]] + index) * REGION_BLOCKS + w]);
+                            }
+
+
+                        } else {
+                            for (int w = 0; w < REGION_BLOCKS; w++) {
+                                for (int e = 0; e < 8; e++) {
+                                    kappa[e][w] = xor_region(kappa[e][w], multiply_region(((encode_t **)data_collected)[j][z_index + w],
+                                                                                          final_matrix[e][j]));
+                                }
+                                //prefetch(&((encode_t **)data_collected)[node_companion[j+1][z]][z_index + w]);
+                                //prefetch(&((encode_t **)data_collected)[j+1][z_index + w]);
+                            }
+
+                        }
+                    } else if (j != companion && data_collected[companion]) {
+
+                        int new_z = z_pos[z_companion[j][z]];
+                        int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
+
+                        for (int w = 0; w < REGION_BLOCKS; w++) {
+                            for (int e = 0; e < 8; e++) {
+                                kappa[e][w] = xor_region(kappa[e][w],
+                                                         multiply_region(((encode_t **)data_collected)[companion][new_z_index + w],
+                                                                         u_final_matrix[e][j]));
+                            }
+                            prefetch(&((encode_t **)data_collected)[j+1][z_index + w]);
+                            prefetch(&((encode_t **)data_collected)[node_companion[j+1][z]][(block_size * z_pos[z_companion[j+1][z]] + index) * REGION_BLOCKS + w]);
+                        }
+                    }
+                }
+            }else{
                 assert(0);
             }
 
@@ -693,13 +929,7 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
 uint8_t a = 71;
 uint8_t b = 201;
 
-static void inline prefetch(const __m256i *src){
-    _mm_prefetch(src,_MM_HINT_NTA);
-}
 
-static void inline store(encode_t *dst,encode_t val){
-    _mm256_stream_si256(dst,val);
-}
 
 static void inline
 sequential_decode(int index, int block_size, int *errors, int error_cnt,
@@ -907,7 +1137,195 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                         }
                     }
 
-                } else {
+                } else if (error_cnt == 5) {
+                    for (j = 0; j < k; j++) {
+                        int node_id = ok[j];
+
+                        int z_index = (block_size * z + index) * REGION_BLOCKS;
+
+                        int companion = node_companion[node_id][z];
+
+                        if (companion != node_id) {
+                            int new_z = z_companion[node_id][z];
+                            int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
+
+                            for (int w = 0; w < REGION_BLOCKS; w++) {
+                                encode_t a_cur = xor_region(((encode_t **)data_collected)[node_id][z_index + w],
+                                                            multiply_region(((encode_t **)data_collected)[companion][new_z_index + w], u));
+
+
+                                for (int e = 0; e < 5; e++)
+                                    tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
+                                                                               multiply_region(a_cur,
+                                                                                               final_matrix[e][node_id]));
+
+
+                                prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][(block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w]);
+                            }
+
+                        } else if (companion == node_id) {
+                            for (int w = 0; w < REGION_BLOCKS; w++) {
+                                for (int e = 0; e < 5; e++) {
+
+                                    tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
+                                                                               multiply_region(((encode_t **)data_collected)[node_id][
+                                                                                                       (block_size * z +
+                                                                                                        index) *
+                                                                                                       REGION_BLOCKS +
+                                                                                                       w],
+                                                                                               final_matrix[e][node_id]));
+
+                                }
+                                prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][(block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w]);
+                            }
+
+                        }
+                    }
+
+                }else if (error_cnt == 6) {
+                    for (j = 0; j < k; j++) {
+                        int node_id = ok[j];
+
+                        int z_index = (block_size * z + index) * REGION_BLOCKS;
+
+                        int companion = node_companion[node_id][z];
+
+                        if (companion != node_id) {
+                            int new_z = z_companion[node_id][z];
+                            int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
+
+                            for (int w = 0; w < REGION_BLOCKS; w++) {
+                                encode_t a_cur = xor_region(((encode_t **)data_collected)[node_id][z_index + w],
+                                                            multiply_region(((encode_t **)data_collected)[companion][new_z_index + w], u));
+
+
+                                for (int e = 0; e < 6; e++)
+                                    tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
+                                                                               multiply_region(a_cur,
+                                                                                               final_matrix[e][node_id]));
+
+
+                                prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][(block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w]);
+                            }
+
+                        } else if (companion == node_id) {
+                            for (int w = 0; w < REGION_BLOCKS; w++) {
+                                for (int e = 0; e < 6; e++) {
+
+                                    tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
+                                                                               multiply_region(((encode_t **)data_collected)[node_id][
+                                                                                                       (block_size * z +
+                                                                                                        index) *
+                                                                                                       REGION_BLOCKS +
+                                                                                                       w],
+                                                                                               final_matrix[e][node_id]));
+
+                                }
+                                prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][(block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w]);
+                            }
+
+                        }
+                    }
+
+                }else if (error_cnt == 7) {
+                    for (j = 0; j < k; j++) {
+                        int node_id = ok[j];
+
+                        int z_index = (block_size * z + index) * REGION_BLOCKS;
+
+                        int companion = node_companion[node_id][z];
+
+                        if (companion != node_id) {
+                            int new_z = z_companion[node_id][z];
+                            int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
+
+                            for (int w = 0; w < REGION_BLOCKS; w++) {
+                                encode_t a_cur = xor_region(((encode_t **)data_collected)[node_id][z_index + w],
+                                                            multiply_region(((encode_t **)data_collected)[companion][new_z_index + w], u));
+
+
+                                for (int e = 0; e < 7; e++)
+                                    tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
+                                                                               multiply_region(a_cur,
+                                                                                               final_matrix[e][node_id]));
+
+
+                                prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][(block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w]);
+                            }
+
+                        } else if (companion == node_id) {
+                            for (int w = 0; w < REGION_BLOCKS; w++) {
+                                for (int e = 0; e < 7; e++) {
+
+                                    tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
+                                                                               multiply_region(((encode_t **)data_collected)[node_id][
+                                                                                                       (block_size * z +
+                                                                                                        index) *
+                                                                                                       REGION_BLOCKS +
+                                                                                                       w],
+                                                                                               final_matrix[e][node_id]));
+
+                                }
+                                prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][(block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w]);
+                            }
+
+                        }
+                    }
+
+                }else if (error_cnt == 8) {
+                    for (j = 0; j < k; j++) {
+                        int node_id = ok[j];
+
+                        int z_index = (block_size * z + index) * REGION_BLOCKS;
+
+                        int companion = node_companion[node_id][z];
+
+                        if (companion != node_id) {
+                            int new_z = z_companion[node_id][z];
+                            int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
+
+                            for (int w = 0; w < REGION_BLOCKS; w++) {
+                                encode_t a_cur = xor_region(((encode_t **)data_collected)[node_id][z_index + w],
+                                                            multiply_region(((encode_t **)data_collected)[companion][new_z_index + w], u));
+
+
+                                for (int e = 0; e < 8; e++)
+                                    tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
+                                                                               multiply_region(a_cur,
+                                                                                               final_matrix[e][node_id]));
+
+
+                                prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][(block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w]);
+                            }
+
+                        } else if (companion == node_id) {
+                            for (int w = 0; w < REGION_BLOCKS; w++) {
+                                for (int e = 0; e < 8; e++) {
+
+                                    tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],
+                                                                               multiply_region(((encode_t **)data_collected)[node_id][
+                                                                                                       (block_size * z +
+                                                                                                        index) *
+                                                                                                       REGION_BLOCKS +
+                                                                                                       w],
+                                                                                               final_matrix[e][node_id]));
+
+                                }
+                                prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w]);
+                                prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][(block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w]);
+                            }
+
+                        }
+                    }
+
+                }else {
                     assert(0);
                 }
 
@@ -995,7 +1413,7 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
         if (!data[i])
             error_cnt++;
 
-    assert(error_cnt <= 4);
+    assert(error_cnt <= 8);
 
     int err_id[MAX_NODE];
     bool is_error[MAX_NODE];
