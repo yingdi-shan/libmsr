@@ -16,12 +16,12 @@
 #define REGION_SIZE 512
 #define DATA_SIZE (  (1<<30) - ((1<<30)%(STRIPE_SIZE * REGION_SIZE)))
 
-#define TEST_LOOP (100)
+#define TEST_LOOP (5)
 
 int main(){
 
 
-    for(int r=2;r<=8;r++) {
+    for(int r=2;r<=4;r++) {
 
         int n = r * 3;
         int k = n - r;

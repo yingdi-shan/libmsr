@@ -1,9 +1,10 @@
 cmake_minimum_required(VERSION 2.8)
 project(libmsr)
 
-set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -std=c99 -O3 -mavx2 -g -fopenmp")
+set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -std=c99 -O3 -mavx2 ")
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+include_directories(include/)
 add_library(msr src/msr_encode.c)
 
 set(TEST_FILES test/test.c)

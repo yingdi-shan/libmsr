@@ -31,6 +31,4 @@ int msr_regenerate(int len, int n, int k, uint8_t **data, uint8_t *output);
 void init(int n,int k);
 
 
-void rs_encode(int len,int row,int *errors, int k, int *alive, uint8_t **data,uint8_t **coding);
-
 #endif //MSR_H

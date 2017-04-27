@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
     //srand(2);
 
 
-    int r = 6;
+    int r = 4;
     int n = r * 3;
     int k = n - r;
 
