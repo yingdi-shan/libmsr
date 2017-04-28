@@ -13,7 +13,7 @@
 #include "gf.h"
 #include "arch.h"
 
-#define MAX_NODE 24
+#define MAX_NODE 12
 #define MAX_STRIPE 64
 
 
@@ -145,7 +145,21 @@ static int compute_sigma(int *errors, int error_cnt, int q, int t, int z) {
     return sigma;
 }
 
-int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *memory) {
+
+int msr_regenerate_batch(int len,int n,int k,uint8_t *data, int broken, uint8_t *output){
+    int i;
+    uint8_t * datas[n];
+    datas[broken] = NULL;
+    for(i=0;i<n;i++){
+        if(i!=broken){
+            datas[i] = data;
+            data += len;
+        }
+    }
+    msr_regenerate(len,n,k,datas,output);
+}
+
+int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *output) {
     int i;
     int q = n - k;
     int t = n / q;
@@ -716,7 +730,7 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *mem
 
 
                 for (int w = 0; w < REGION_BLOCKS; w++) {
-                    store((encode_t *) memory + z_index + w, kappa[j][w]);
+                    store((encode_t *) output + z_index + w, kappa[j][w]);
                     kappa[j][w] = zero();
                 }
             }
@@ -766,7 +780,7 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
 
                             for (int w = 0; w < REGION_BLOCKS; w++) {
                                 encode_t a_cur = xor_region(((encode_t **)data_collected)[node_id][z_index + w],
-                                                            multiply_region(((encode_t **)data_collected)[companion][new_z_index + w], u));
+                                                             multiply_region(((encode_t **)data_collected)[companion][new_z_index + w], u));
 
 
                                 for (int e = 0; e < 1; e++)
@@ -1182,6 +1196,7 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                             encode_t a_companion = xor_region(
                                     multiply_region(tmp[j][z_index], b),
                                     multiply_region(tmp[comp_id][new_z_index], a));
+                            tmp[j][z_index] = tmp[comp_id][new_z_index] = zero();
 
                             store(&((encode_t **)data_collected)[error][(block_size * z + index) * REGION_BLOCKS + w],a_cur);
                             store(&((encode_t **)data_collected)[companion][(block_size * new_z + index) * REGION_BLOCKS + w],a_companion);
@@ -1189,6 +1204,7 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                     } else if (companion == error || !is_error[companion]) {
                         for (int w = 0; w < REGION_BLOCKS; w++) {
                             store(&((encode_t **)data_collected)[error][(block_size * z + index) * REGION_BLOCKS + w],tmp[j][z * REGION_BLOCKS + w]);
+                            tmp[j][z*REGION_BLOCKS + w] = zero();
                         }
                     }
                 }

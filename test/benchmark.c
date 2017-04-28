@@ -6,7 +6,7 @@
 #include <time.h>
 #include <assert.h>
 #include <math.h>
-#include "gf.h"
+#include "../src/gf.h"
 #include "msr.h"
 #include <stdio.h>
 #include <malloc.h>
@@ -16,7 +16,7 @@
 #define REGION_SIZE 512
 #define DATA_SIZE (  (1<<30) - ((1<<30)%(STRIPE_SIZE * REGION_SIZE)))
 
-#define TEST_LOOP (5)
+#define TEST_LOOP (1)
 
 int main(){
 

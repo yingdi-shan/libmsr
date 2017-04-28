@@ -6,7 +6,7 @@
 #include <time.h>
 #include <assert.h>
 #include <math.h>
-#include "gf.h"
+#include "../src/gf.h"
 #include "msr.h"
 #include <stdio.h>
 #include <mm_malloc.h>
@@ -14,7 +14,7 @@
 
 #define STRIPE_SIZE (_pow(q,t) * q * (t-1))
 #define BLOCK_SIZE 512
-#define DATA_SIZE (STRIPE_SIZE * (512))
+#define DATA_SIZE (STRIPE_SIZE * (65536))
 
 int main(int argc, char **argv) {
     srand(time(0));
@@ -57,7 +57,7 @@ int main(int argc, char **argv) {
         printf("\n");
     }
     printf("-----------Begin to test decode-----------\n");
-    int test_turn = 10;
+    int test_turn = 100;
 
     for (int i = 0; i < test_turn; i++) {
         printf("Turn %d:\n", i);
