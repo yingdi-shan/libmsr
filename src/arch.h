@@ -5,6 +5,15 @@
 #ifndef LIBMSR_ARCH_H
 #define LIBMSR_ARCH_H
 
+
+uint32_t _pow(uint32_t a, int b) {
+    uint32_t ret = 1;
+    for (int i = 1; i <= b; i++)
+        ret *= a;
+    return ret;
+}
+
+
 #ifdef AVX2
 
 #include <immintrin.h>
@@ -13,13 +22,6 @@ typedef __m256i encode_t;
 
 #define REGION_SIZE 512
 #define REGION_BLOCKS (REGION_SIZE/sizeof(encode_t))
-
-uint32_t _pow(uint32_t a, int b) {
-    uint32_t ret = 1;
-    for (int i = 1; i <= b; i++)
-        ret *= a;
-    return ret;
-}
 
 
 static encode_t mask_lo;
@@ -70,7 +72,6 @@ static inline  encode_t multiply_region(encode_t input, uint8_t x) {
     __m256i high = _mm256_and_si256(input, mask_hi);
 
     __m256i low_t = low_table[x], high_t = high_table[x];
-    //high = _mm256_srli_epi64(high,4);
     high = _mm256_srli_epi16(high, 4);
 
     __m256i right = _mm256_shuffle_epi8(low_t, low);

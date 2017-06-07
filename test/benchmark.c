@@ -16,7 +16,7 @@
 #define REGION_SIZE 512
 #define DATA_SIZE (  (1<<30) - ((1<<30)%(STRIPE_SIZE * REGION_SIZE)))
 
-#define TEST_LOOP (1)
+#define TEST_LOOP (10)
 
 int main(){
 
