@@ -10,20 +10,20 @@
 #include <stdio.h>
 #include <mm_malloc.h>
 
+const int n = 14;
+const int k = 10;
 
-#define DATA_SIZE (1 << 20)
+#define DATA_SIZE k * (1 << 22)
 
 int main(int argc, char **argv) {
+    srand(time(0));
 
-    int n = 12;
-    int k = 8;
     int r = n-k;
     msr_conf conf;
     msr_init(&conf,n,k,malloc,free);
 
 
-
-    uint8_t *data[n] ;
+    uint8_t *data[n];
     uint8_t *memory_pre_allocated[r];
 
     for(int i=0;i<n;i++)
@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
     for(int i=0;i<k;i++) {
         posix_memalign((void **)&data[i],64,sizeof(uint8_t) * DATA_SIZE / k);
         for(int j=0;j<DATA_SIZE/k;j++)
-            data[i][j] = (uint8_t)(0xaa);
+            data[i][j] = (uint8_t)(rand() & 0xff);
     }
 
     for(int i=0;i<r;i++) {
@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
     msr_fill_encode_matrix(&matrix,&conf,data);
 
     uint8_t *buf ;
-    posix_memalign((void **)&buf,64,n * conf.coding_unit_size * sizeof(uint8_t));
+    posix_memalign((void **)&buf,64,r * conf.coding_unit_size * sizeof(uint8_t));
 
     msr_encode(DATA_SIZE/k,&matrix,&conf,buf,data,memory_pre_allocated);
 
@@ -58,8 +58,8 @@ int main(int argc, char **argv) {
     printf("-----------Begin to test decode-----------\n");
     int test_turn = 100;
 
-    for (int i = 0; i < test_turn; i++) {
-        printf("Turn %d:\n", i);
+    for (int t = 0; t < test_turn; t++) {
+        printf("Turn %d:\n", t);
 
         uint8_t *input[n];
         for (int j = 0; j < n; j++)
@@ -76,7 +76,6 @@ int main(int argc, char **argv) {
 
         for(int i=0;i<r;i++) {
             posix_memalign((void *)&(memory_pre_allocated[i]),64,sizeof(uint8_t) * DATA_SIZE / k);
-            memset(memory_pre_allocated[i],0x00,sizeof(uint8_t) * DATA_SIZE / k);
         }
 
 
@@ -85,15 +84,8 @@ int main(int argc, char **argv) {
         msr_encode(DATA_SIZE/k,&matrix,&conf,buf,input,memory_pre_allocated);
 
 
-        for (int i = 0; i < n; i++) {
-            printf("Decoded %d: ", i);
-            for (int s = 0; s < 8; s++)
-                printf("%x ", input[i][s]);
-            printf("\n");
-        }
-
         for(int j=0;j<n;j++)
-            assert(!memcmp(input[j],data[j],DATA_SIZE/k));
+            assert(!memcmp(input[j],data[j],DATA_SIZE / k));
 
         printf("Check OK!\n");
 

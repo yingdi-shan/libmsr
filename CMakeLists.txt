@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 project(libmsr)
 
-set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -std=c99 -O0 -g -mavx2 ")
+set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -std=c99 -O3 -g -mavx2 ")
 
 
 include_directories(include/)
@@ -12,8 +12,8 @@ set(BENCHMARK_FILES test/benchmark.c)
 
 add_executable(test ${TEST_FILES})
 
-#add_executable(benchmark ${BENCHMARK_FILES})
+add_executable(benchmark ${BENCHMARK_FILES})
 
 
 target_link_libraries(test msr)
-#target_link_libraries(benchmark msr)
+target_link_libraries(benchmark msr)

@@ -6,13 +6,11 @@
 #include <time.h>
 #include <assert.h>
 #include <math.h>
-#include "../src/gf.h"
 #include "msr.h"
 #include <stdio.h>
-#include <malloc.h>
 #include <mm_malloc.h>
 
-#define STRIPE_SIZE (_pow(q,t) * q * (t-1))
+#define STRIPE_SIZE ((1<<12) * 27)
 #define REGION_SIZE 512
 #define DATA_SIZE (  (1<<30) - ((1<<30)%(STRIPE_SIZE * REGION_SIZE)))
 
@@ -26,10 +24,9 @@ int main(){
         int n = r * 3;
         int k = n - r;
 
-        int q = r;
-        int t = n / q;
 
-        init(n, k);
+        msr_conf conf;
+        msr_init(&conf,n,k,malloc,free);
 
         uint8_t *data[n];
         uint8_t *memory_pre_allocated[k];
@@ -51,13 +48,17 @@ int main(){
             memset(memory_pre_allocated[i], 0x00, sizeof(uint8_t) * DATA_SIZE / k);
         }
 
+        uint8_t *buf ;
+        posix_memalign((void **)&buf,64,r * conf.coding_unit_size * sizeof(uint8_t));
 
         clock_t start = clock();
 
         for (int loop = 0; loop < TEST_LOOP; loop++) {
             for (int i = 0; i < r; i++)
                 data[i + k] = NULL;
-            msr_encode(DATA_SIZE / k, n, k, data, memory_pre_allocated);
+            msr_encode_matrix matrix;
+            msr_fill_encode_matrix(&matrix,&conf,data);
+            msr_encode(DATA_SIZE/k,&matrix,&conf,buf,data,memory_pre_allocated);
         }
 
         printf("Total Clock Time: %.2fs\n", (clock() - start) / (double) CLOCKS_PER_SEC);
@@ -77,13 +78,17 @@ int main(){
                     broken++;
                 }
             }
-            msr_encode(DATA_SIZE / k, n, k, data, memory_pre_allocated);
+            msr_encode_matrix matrix;
+            msr_fill_encode_matrix(&matrix,&conf,data);
+            msr_encode(DATA_SIZE/k,&matrix,&conf,buf,data,memory_pre_allocated);
         }
 
         printf("Total Clock Time: %.2fs\n", (clock() - start) / (double) CLOCKS_PER_SEC);
 
         printf("Decode Throughput: %.2fMB/s\n",
                TEST_LOOP * (double) DATA_SIZE / k * n / ((clock() - start) / (double) CLOCKS_PER_SEC) * 1e-6);
+
+        /*
 
         int error = 1;
 
@@ -121,6 +126,7 @@ int main(){
                TEST_LOOP * (double) DATA_SIZE / k / ((clock() - start) / (double) CLOCKS_PER_SEC) * 1e-6);
 
         free(memory);
+         */
 
     }
 }
