@@ -5,14 +5,7 @@
 #ifndef LIBMSR_ARCH_H
 #define LIBMSR_ARCH_H
 
-
-uint32_t _pow(uint32_t a, int b) {
-    uint32_t ret = 1;
-    for (int i = 1; i <= b; i++)
-        ret *= a;
-    return ret;
-}
-
+#define AVX2
 
 #ifdef AVX2
 
@@ -23,14 +16,12 @@ typedef __m256i encode_t;
 #define REGION_SIZE 512
 #define REGION_BLOCKS (REGION_SIZE/sizeof(encode_t))
 
-
+static encode_t low_table[256];
+static encode_t high_table[256];
 static encode_t mask_lo;
 static encode_t mask_hi;
 
-static encode_t low_table[256];
-static encode_t high_table[256];
-
-static void init_avx2() {
+static void init_arch() {
     int low_array[32];
     int high_array[32];
     for (int i = 0; i < 256; i++) {
@@ -57,16 +48,15 @@ static void init_avx2() {
                                          high_array[25], high_array[26], high_array[27], high_array[28], high_array[29],
                                          high_array[30], high_array[31]);
     }
+    mask_lo = _mm256_set1_epi8(0x0f);
+    mask_hi = _mm256_set1_epi8(0xf0);
 }
 
 static inline encode_t xor_region(encode_t input1, encode_t input2) {
     return _mm256_xor_si256(input1, input2);
 }
 
-static inline  encode_t multiply_region(encode_t input, uint8_t x) {
-
-     mask_lo = _mm256_set1_epi8(0x0f);
-     mask_hi = _mm256_set1_epi8(0xf0);
+static inline encode_t multiply_region(encode_t input, uint8_t x) {
 
     __m256i low = _mm256_and_si256(input, mask_lo);
     __m256i high = _mm256_and_si256(input, mask_hi);
@@ -79,7 +69,6 @@ static inline  encode_t multiply_region(encode_t input, uint8_t x) {
 
 
     return _mm256_xor_si256(left, right);
-
 }
 
 static inline encode_t zero(){

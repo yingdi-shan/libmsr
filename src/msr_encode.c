@@ -1,6 +1,7 @@
 //
 // Created by syd on 16-11-1.
 //
+/*
 #define AVX2
 
 #include <assert.h>
@@ -32,7 +33,7 @@ void gf_init() {
         GfPow[i + GF_SIZE - 1] = GfPow[i];
         GfLog[GfPow[i] + GF_SIZE - 1] = GfLog[GfPow[i]] = i;
     }
-    init_avx2();
+    init_arch();
 }
 
 inline uint8_t gf_mul(uint32_t a, uint32_t b) {
@@ -72,19 +73,6 @@ int permute(int z, int remove_bit_id, int added_bit, int q, int t) {
     return result;
 }
 
-uint8_t gf_pow(int x, int y) {
-    if (y == 0)
-        return 1;
-    if (y == 1)
-        return x;
-    if (y % 2 == 0) {
-        uint8_t mid = gf_pow(x, y / 2);
-        return gf_mul(mid, mid);
-    } else {
-        uint8_t mid = gf_pow(x, y / 2);
-        return gf_mul(x, gf_mul(mid, mid));
-    }
-}
 
 const uint8_t u = 3;
 
@@ -92,7 +80,6 @@ const uint8_t u = 3;
 static uint8_t node_companion[MAX_NODE][MAX_STRIPE];
 static uint8_t z_companion[MAX_NODE][MAX_STRIPE];
 static uint8_t theta[MAX_NODE][MAX_NODE];
-static uint8_t u_theta[MAX_NODE][MAX_NODE];
 
 static void init_companion(int n, int k) {
     assert(n <= MAX_NODE);
@@ -116,12 +103,10 @@ static void init_theta(int n, int k) {
     for (int i = 0; i < n - k; i++)
         for (int j = 0; j < k; j++) {
             theta[i][j] = gf_div(1, j ^ (i + k));
-            u_theta[i][j] = gf_mul(u, theta[i][j]);
         }
 
     for (int i = 0; i < n - k; i++) {
         theta[i][i + k] = 1;
-        u_theta[i][i + k] = u;
     }
 
 }
@@ -145,7 +130,7 @@ static int compute_sigma(int *errors, int error_cnt, int q, int t, int z) {
     return sigma;
 }
 
-int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *output) {
+void msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *output) {
     int i;
     int q = n - k;
     int t = n / q;
@@ -299,20 +284,20 @@ int msr_regenerate(int len, int n, int k, uint8_t **data_collected, uint8_t *out
                 REGENERATE_PLANE(1)
             } else if (q == 2) {
                 REGENERATE_PLANE(2)
-            }else if (q == 3) {
+            } else if (q == 3) {
                 REGENERATE_PLANE(3)
-            }else if (q == 4) {
+            } else if (q == 4) {
                 REGENERATE_PLANE(4)
-            }else if (q == 5) {
+            } else if (q == 5) {
                 REGENERATE_PLANE(5)
-            }else if (q == 6) {
+            } else if (q == 6) {
                 REGENERATE_PLANE(6)
-            }else if (q == 7) {
+            } else if (q == 7) {
                 REGENERATE_PLANE(7)
-            }else if (q == 8) {
+            } else if (q == 8) {
                 REGENERATE_PLANE(8)
             } else {
-                assert(0);
+                REGENERATE_PLANE(q)
             }
 
             for (j = 0; j < q; j++) {
@@ -334,10 +319,58 @@ uint8_t a = 71;
 uint8_t b = 201;
 
 
+static void inline inverse_matrix(uint8_t *matrix, int n, uint8_t *inv) {
+    int i=0, j=0;
+
+    memset(inv, 0, n * n * sizeof(uint8_t));
+
+    for (i = 0; i < n; i++)
+        inv[i * n + i] = 1;
+
+    for (i = 0; i < n; i++) {
+
+        if (!matrix[i * n + i]) {
+            for (j = i + 1; j < n; j++)
+                if (matrix[j * n + i])
+                    break;
+            assert(j != n);
+
+            for (int t = 0; t < n; t++) {
+                uint8_t tmp = matrix[i * n + t];
+                matrix[i * n + t] = matrix[j * n + t];
+                matrix[j * n + t] = tmp;
+
+                tmp = inv[i * n + t];
+                inv[i * n + t] = inv[j * n + t];
+                inv[j * n + t] = tmp;
+
+            }
+
+        }
+
+        uint8_t f = matrix[i * n + i];
+
+        for (j = 0; j < n; j++) {
+            matrix[i * n + j] = gf_div(matrix[i * n + j], f);
+            inv[i * n + j] = gf_div(inv[i * n + j], f);
+        }
+
+        for (j = 0; j < n; j++)
+            if (i != j) {
+                f = matrix[j * n + i];
+                for (int t = 0; t < n; t++) {
+                    matrix[j * n + t] ^= gf_mul(matrix[i * n + t], f);
+                    inv[j * n + t] ^= gf_mul(inv[i * n + t], f);
+                }
+            }
+    }
+}
+
+
 static void inline
 sequential_decode(int index, int block_size, int *errors, int error_cnt,
                   int *sigmas, int sigma_max, int *err_id, bool *is_error, int *ok, encode_t *data_collected[MAX_NODE],
-                  encode_t tmp[MAX_NODE][MAX_STRIPE * REGION_BLOCKS + 3], uint8_t final_matrix[MAX_NODE][MAX_NODE],
+                  encode_t tmp[MAX_NODE][MAX_STRIPE * REGION_BLOCKS + 3], uint8_t *matrix,
                   int q, int t) {
     int n = q * t;
     int k = n - q;
@@ -359,14 +392,14 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
             encode_t a_cur = xor_region(((encode_t **)data_collected)[node_id][z_index + w], \
                                         multiply_region(((encode_t **)data_collected)[companion][new_z_index + w], u)); \
             for (int e = 0; e < errors; e++) \
-                tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],multiply_region(a_cur,final_matrix[e][node_id])); \
+                tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],multiply_region(a_cur,matrix[e * n + node_id])); \
             prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w]); \
             prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][(block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w]); \
         } \
     } else if (companion == node_id) { \
         for (int w = 0; w < REGION_BLOCKS; w++) { \
             for (int e = 0; e < errors; e++) { \
-                tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],multiply_region(((encode_t **)data_collected)[node_id][(block_size * z +index) *REGION_BLOCKS +w],final_matrix[e][node_id])); \
+                tmp[e][z * REGION_BLOCKS + w] = xor_region(tmp[e][z * REGION_BLOCKS + w],multiply_region(((encode_t **)data_collected)[node_id][(block_size * z +index) *REGION_BLOCKS +w],matrix[e* n + node_id])); \
             } \
             prefetch(&((encode_t **)data_collected)[ok[j + 1]][(block_size * z + index) * REGION_BLOCKS + w]); \
             prefetch(&((encode_t **)data_collected)[node_companion[ok[j + 1]][z]][(block_size * z_companion[ok[j + 1]][z] + index) * REGION_BLOCKS + w]); \
@@ -410,12 +443,12 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                         int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
 
                         for (int w = 0; w < REGION_BLOCKS; w++) {
-                            tmp[j][z * REGION_BLOCKS + w] = xor_region(tmp[j][z * REGION_BLOCKS + w], multiply_region(data_collected[companion][new_z_index + w], u));
+                            tmp[j][z * REGION_BLOCKS + w] = xor_region(tmp[j][z * REGION_BLOCKS + w], multiply_region(
+                                    data_collected[companion][new_z_index + w], u));
                         }
                     }
 
                 }
-
 
             }
 
@@ -447,11 +480,13 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
                             tmp[j][z_index] = tmp[comp_id][new_z_index] = zero();
 
                             store(&data_collected[error][(block_size * z + index) * REGION_BLOCKS + w], a_cur);
-                            store(&data_collected[companion][(block_size * new_z + index) * REGION_BLOCKS + w], a_companion);
+                            store(&data_collected[companion][(block_size * new_z + index) * REGION_BLOCKS + w],
+                                  a_companion);
                         }
                     } else if (companion == error || !is_error[companion]) {
                         for (int w = 0; w < REGION_BLOCKS; w++) {
-                            store(&((encode_t **) data_collected)[error][(block_size * z + index) * REGION_BLOCKS + w], tmp[j][z * REGION_BLOCKS + w]);
+                            store(&((encode_t **) data_collected)[error][(block_size * z + index) * REGION_BLOCKS + w],
+                                  tmp[j][z * REGION_BLOCKS + w]);
                             tmp[j][z * REGION_BLOCKS + w] = zero();
                         }
                     }
@@ -461,15 +496,12 @@ sequential_decode(int index, int block_size, int *errors, int error_cnt,
     }
 }
 
-void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocated) {
+void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **output) {
     int r = n - k;
 
     assert(n % r == 0);
 
-    int q = r;
-    int t = n / q;
-
-    uint32_t stripe_size = _pow(q, t);
+    uint32_t stripe_size = _pow(r, n/r);
 
     assert(len % (stripe_size * REGION_SIZE) == 0);
 
@@ -479,7 +511,7 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
         if (!data[i])
             error_cnt++;
 
-    assert(error_cnt <= 8);
+    assert(error_cnt < 8);
 
     int err_id[MAX_NODE];
     bool is_error[MAX_NODE];
@@ -502,13 +534,13 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
 
     for (int i = 0; i < n; i++)
         if (is_error[i]) {
-            data[i] = memory_allocated[index++];
+            data[i] = output[index++];
         }
 
     int sigmas[stripe_size];
 
     for (int z = 0; z < stripe_size; z++)
-        sigmas[z] = compute_sigma(errors, error_cnt, q, t, z);
+        sigmas[z] = compute_sigma(errors, error_cnt, r, n/r, z);
 
     int block_size = len / stripe_size / REGION_SIZE;
 
@@ -535,15 +567,9 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
             sigma_max = sigmas[z];
     }
 
-    uint8_t inv_matrix[MAX_NODE][MAX_NODE];
-    uint8_t final_matrix[MAX_NODE][MAX_NODE];
-    uint8_t matrix[MAX_NODE][MAX_NODE];
-
-    memset(inv_matrix, 0, sizeof(inv_matrix));
-
-    for (int i = 0; i < error_cnt; i++)
-        inv_matrix[i][i] = 1;
-
+    uint8_t inv_matrix[error_cnt][error_cnt];
+    uint8_t final_matrix[error_cnt][n];
+    uint8_t matrix[error_cnt][error_cnt];
 
     memset(matrix, 0, sizeof(matrix));
     for (int i = 0; i < error_cnt; i++)
@@ -551,43 +577,7 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
             matrix[i][j] = theta[i][errors[j]];
         }
 
-    for (int i = 0; i < error_cnt; i++) {
-
-        if (!matrix[i][i]) {
-            for (j = i + 1; j < error_cnt; j++)
-                if (matrix[j][i])
-                    break;
-            assert(j != error_cnt);
-
-            for (int t = 0; t < error_cnt; t++) {
-                uint8_t tmp = matrix[i][t];
-                matrix[i][t] = matrix[j][t];
-                matrix[j][t] = tmp;
-
-                tmp = inv_matrix[i][t];
-                inv_matrix[i][t] = inv_matrix[j][t];
-                inv_matrix[j][t] = tmp;
-
-            }
-
-        }
-
-        uint8_t f = matrix[i][i];
-
-        for (j = 0; j < error_cnt; j++) {
-            matrix[i][j] = gf_div(matrix[i][j], f);
-            inv_matrix[i][j] = gf_div(inv_matrix[i][j], f);
-        }
-
-        for (j = 0; j < error_cnt; j++)
-            if (i != j) {
-                f = matrix[j][i];
-                for (int t = 0; t < error_cnt; t++) {
-                    matrix[j][t] ^= gf_mul(matrix[i][t], f);
-                    inv_matrix[j][t] ^= gf_mul(inv_matrix[i][t], f);
-                }
-            }
-    }
+    inverse_matrix(*matrix,error_cnt,*inv_matrix);
 
     memset(final_matrix, 0, sizeof(final_matrix));
 
@@ -602,6 +592,7 @@ void msr_encode(int len, int n, int k, uint8_t **data, uint8_t **memory_allocate
     for (index = 0; index < block_size; index++) {
         sequential_decode(index, block_size, errors, error_cnt, sigmas, sigma_max, err_id, is_error, ok,
                           ((encode_t **) data), tmp,
-                          final_matrix, q, t);
+                          *final_matrix, r, n/r);
     }
 }
+*/

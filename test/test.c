@@ -6,49 +6,46 @@
 #include <time.h>
 #include <assert.h>
 #include <math.h>
-#include "../src/gf.h"
 #include "msr.h"
 #include <stdio.h>
 #include <mm_malloc.h>
 
 
-#define STRIPE_SIZE (_pow(q,t) * q * (t-1))
-#define BLOCK_SIZE 512
-#define DATA_SIZE (STRIPE_SIZE * (65536))
+#define DATA_SIZE (1 << 20)
 
 int main(int argc, char **argv) {
-    srand(time(0));
-    //srand(2);
 
+    int n = 12;
+    int k = 8;
+    int r = n-k;
+    msr_conf conf;
+    msr_init(&conf,n,k,malloc,free);
 
-    int r = 4;
-    int n = r * 3;
-    int k = n - r;
-
-    int q = r;
-    int t = n / q;
-
-    init(n,k);
 
 
     uint8_t *data[n] ;
-    uint8_t *memory_pre_allocated[k];
+    uint8_t *memory_pre_allocated[r];
 
     for(int i=0;i<n;i++)
         data[i] = NULL;
 
     for(int i=0;i<k;i++) {
-        posix_memalign((void *)&(data[i]),64,sizeof(uint8_t) * DATA_SIZE / k);
+        posix_memalign((void **)&data[i],64,sizeof(uint8_t) * DATA_SIZE / k);
         for(int j=0;j<DATA_SIZE/k;j++)
-            data[i][j] = rand()%256;
-       // memset(data[i], 0xaa, sizeof(uint8_t) * DATA_SIZE / k);
+            data[i][j] = (uint8_t)(0xaa);
     }
 
     for(int i=0;i<r;i++) {
-        posix_memalign((void *)&(memory_pre_allocated[i]),64,sizeof(uint8_t) * DATA_SIZE / k);
+        posix_memalign((void **)&memory_pre_allocated[i],64,sizeof(uint8_t) * DATA_SIZE / k);
     }
 
-    msr_encode(DATA_SIZE/k,n,k,data,memory_pre_allocated);
+    msr_encode_matrix matrix;
+    msr_fill_encode_matrix(&matrix,&conf,data);
+
+    uint8_t *buf ;
+    posix_memalign((void **)&buf,64,n * conf.coding_unit_size * sizeof(uint8_t));
+
+    msr_encode(DATA_SIZE/k,&matrix,&conf,buf,data,memory_pre_allocated);
 
     for (int i = 0; i < n; i++) {
         printf("Original %d: ", i);
@@ -56,6 +53,8 @@ int main(int argc, char **argv) {
             printf("%x ", data[i][s]);
         printf("\n");
     }
+
+
     printf("-----------Begin to test decode-----------\n");
     int test_turn = 100;
 
@@ -67,9 +66,7 @@ int main(int argc, char **argv) {
             input[j] = NULL;
 
         int ok_cnt = 0;
-        //int num[] = {1,2,3,4,5,6,7,8};
         while (ok_cnt < k) {
-            //int ok_id = num[ok_cnt];
             int ok_id = rand() % n;
             if (!input[ok_id]) {
                 input[ok_id] = data[ok_id];
@@ -83,8 +80,17 @@ int main(int argc, char **argv) {
         }
 
 
-        msr_encode(DATA_SIZE/k,n,k,input,memory_pre_allocated);
+        msr_encode_matrix matrix;
+        msr_fill_encode_matrix(&matrix,&conf,input);
+        msr_encode(DATA_SIZE/k,&matrix,&conf,buf,input,memory_pre_allocated);
 
+
+        for (int i = 0; i < n; i++) {
+            printf("Decoded %d: ", i);
+            for (int s = 0; s < 8; s++)
+                printf("%x ", input[i][s]);
+            printf("\n");
+        }
 
         for(int j=0;j<n;j++)
             assert(!memcmp(input[j],data[j],DATA_SIZE/k));
@@ -95,9 +101,10 @@ int main(int argc, char **argv) {
             free(memory_pre_allocated[i]);
         }
 
-
     }
 
+
+    /*
     printf("-----------Begin to test regenerate-----------\n");
     test_turn = n;
     for (int i = 0; i < test_turn; i++) {
@@ -139,6 +146,7 @@ int main(int argc, char **argv) {
     for(int i=0;i<n;i++)
         free(data[i]);
 
+     */
     return 0;
 
 }
