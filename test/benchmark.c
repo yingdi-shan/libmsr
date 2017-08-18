@@ -9,6 +9,7 @@
 #include "msr.h"
 #include <stdio.h>
 #include <mm_malloc.h>
+#include <malloc.h>
 
 #define STRIPE_SIZE ((1<<12) * 27)
 #define REGION_SIZE 512
@@ -19,14 +20,16 @@
 int main(){
 
 
-    for(int r=2;r<=4;r++) {
+    for(int r=4;r<=4;r++) {
 
         int n = r * 3;
         int k = n - r;
 
 
         msr_conf conf;
-        msr_init(&conf,n,k,malloc,free);
+        msr_init(&conf,n,k,valloc,free);
+
+
 
         uint8_t *data[n];
         uint8_t *memory_pre_allocated[k];
@@ -56,8 +59,10 @@ int main(){
         for (int loop = 0; loop < TEST_LOOP; loop++) {
             for (int i = 0; i < r; i++)
                 data[i + k] = NULL;
+
             msr_encode_matrix matrix;
             msr_fill_encode_matrix(&matrix,&conf,data);
+
             msr_encode(DATA_SIZE/k,&matrix,&conf,buf,data,memory_pre_allocated);
         }
 

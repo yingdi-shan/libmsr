@@ -5,6 +5,8 @@
 #ifndef LIBMSR_ARCH_H
 #define LIBMSR_ARCH_H
 
+#include "gf.h"
+
 #define AVX2
 
 #ifdef AVX2

@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <assert.h>
+#include <stdio.h>
 #include "msr.h"
 #include "gf.h"
 #include "arch.h"
@@ -12,6 +13,8 @@
 const uint8_t u = 3;
 const uint8_t a = 71;
 const uint8_t b = 201;
+
+#define PADDING 3
 
 static int ipow(int base, int exp) {
     int result = 1;
@@ -116,7 +119,7 @@ static void inline inverse_matrix(uint8_t *matrix, int n, uint8_t *inv) {
     }
 }
 
-static int compute_sigma(int z, int *errors, int error_cnt, int r, int groups) {
+static int compute_sigma(int z, const int *errors, int error_cnt, int r, int groups) {
     int sigma = 0;
     for (int i = 0; i < error_cnt; i++) {
         if (errors[i] % r == get_bit(z, errors[i] / r, r, groups)) {
@@ -144,7 +147,8 @@ int msr_init(msr_conf *conf, int n, int k,void* (*allocator)(size_t),void (*deal
     conf->alpha = ipow(r, conf->groups);
     conf->beta = conf->alpha / r;
 
-    conf->coding_unit_size = conf->alpha * REGION_SIZE * sizeof(uint8_t);
+    //Can be improved through padding with a number with is not a power of 2
+    conf->coding_unit_size = conf->alpha * REGION_SIZE * sizeof(uint8_t) + PADDING * sizeof(encode_t) ;
 
     conf->allocate = allocator;
     conf->deallocate = deallocator;
@@ -228,29 +232,47 @@ void msr_fill_encode_matrix(msr_encode_matrix *matrix, const msr_conf *conf, uin
 
 
 static inline void decode_plane(const msr_encode_matrix* matrix, const msr_conf *conf, encode_t **data, encode_t *buf, size_t buf_len, int index, int block_size, int z, int erase_cnt) {
-    int j;
+
+    int i,j,e;
+    int n = conf->n;
+    uint8_t *matrix_ptr = matrix->matrix;
+
+
     for(j = 0; j < conf->k;j++){
         int node_id = matrix->survived[j];
         int z_index = (block_size * z + index) * REGION_BLOCKS;
         int companion = conf->node_companion[node_id * conf->alpha + z];
+
+        int new_node = matrix->survived[j+1];
+        int new_comp = conf->node_companion[matrix->survived[j+1] * conf->alpha + z];
+        int new_comp_z = conf->z_companion[matrix->survived[j+1] * conf->alpha + z];
+        int new_comp_z_index = (block_size * new_comp_z + index) * REGION_BLOCKS;
+
+        uint8_t matrix_tmp[erase_cnt];
+        for(e = 0; e< erase_cnt; e++)
+            matrix_tmp[e] = matrix_ptr[e * n + node_id];
+
+
         if (companion < conf->n && companion != node_id){
             int new_z = conf->z_companion[node_id * conf->alpha + z];
             int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
+
             for(int w=0; w<REGION_BLOCKS;w++){
                 encode_t a_cur = xor_region(data[node_id][z_index + w],multiply_region(data[companion][new_z_index + w],u));
-                for(int e = 0; e < erase_cnt; e++){
-                    buf[e * buf_len + z * REGION_BLOCKS + w] = xor_region(buf[e * buf_len + z * REGION_BLOCKS + w], multiply_region(a_cur,matrix->matrix[e * conf->n + node_id]));
+                for(e = 0; e < erase_cnt; e++){
+                    buf[e * buf_len + z * REGION_BLOCKS + w] = xor_region(buf[e * buf_len + z * REGION_BLOCKS + w], multiply_region(a_cur,matrix_tmp[e]));
                 }
-                prefetch(&data[matrix->survived[j + 1]][z_index + w]);
-                prefetch(&data[conf->node_companion[matrix->survived[j+1] * conf->alpha + z]][(block_size * conf->z_companion[matrix->survived[j+1] + index]) * REGION_BLOCKS + w]);
+                prefetch(&data[new_node][z_index + w]);
+                prefetch(&data[new_comp][new_comp_z_index + w]);
             }
         } else {
+
             for(int w=0; w<REGION_BLOCKS;w++){
-                for(int e = 0; e < erase_cnt; e++){
-                    buf[e * buf_len + z * REGION_BLOCKS + w] = xor_region(buf[e * buf_len + z * REGION_BLOCKS + w],multiply_region(data[node_id][z_index + w],matrix->matrix[e * conf->n + node_id]));
+                for(e = 0; e < erase_cnt; e++){
+                    buf[e * buf_len + z * REGION_BLOCKS + w] = xor_region(buf[e * buf_len + z * REGION_BLOCKS + w],multiply_region(data[node_id][z_index + w],matrix_tmp[e]));
                 }
-                prefetch(&data[matrix->survived[j + 1]][z_index + w]);
-                prefetch(&data[conf->node_companion[matrix->survived[j+1] * conf->alpha + z]][(block_size * conf->z_companion[matrix->survived[j+1] + index]) * REGION_BLOCKS + w]);
+                prefetch(&data[new_node][z_index + w]);
+                prefetch(&data[new_comp][new_comp_z_index + w]);
             }
         }
     }
@@ -268,36 +290,175 @@ static inline void decode_plane(const msr_encode_matrix* matrix, const msr_conf 
             }
         }
     }
+
 }
 
-static inline void fast_decode_plane(const msr_encode_matrix* matrix, const msr_conf *conf, encode_t **data, encode_t *buf, size_t buf_len, int index, int block_size, int z) {
-    switch (matrix->erase_cnt){
-        case 1:
-            decode_plane(matrix, conf, data, buf, conf->alpha * REGION_BLOCKS, index, block_size, z,1);
-            break;
-        case 2:
-            decode_plane(matrix, conf, data, buf, conf->alpha * REGION_BLOCKS, index, block_size, z,2);
-            break;
-        case 3:
-            decode_plane(matrix, conf, data, buf, conf->alpha * REGION_BLOCKS, index, block_size, z,3);
-            break;
+
+static inline void super_fast_decode_plane(const msr_encode_matrix* matrix, const msr_conf *conf, encode_t **data, encode_t *buf, int index, int block_size, int z) {
+    switch (conf->alpha){
+
         case 4:
-            decode_plane(matrix, conf, data, buf, conf->alpha * REGION_BLOCKS, index, block_size, z,4);
-            break;
-        case 5:
-            decode_plane(matrix, conf, data, buf, conf->alpha * REGION_BLOCKS, index, block_size, z,5);
-            break;
-        case 6:
-            decode_plane(matrix, conf, data, buf, conf->alpha * REGION_BLOCKS, index, block_size, z,6);
-            break;
-        case 7:
-            decode_plane(matrix, conf, data, buf, conf->alpha * REGION_BLOCKS, index, block_size, z,7);
+            switch (matrix->erase_cnt){
+                case 1:
+                    decode_plane(matrix, conf, data, buf, 4 * REGION_BLOCKS + PADDING, index, block_size, z,1);
+                    break;
+                case 2:
+                    decode_plane(matrix, conf, data, buf, 4 * REGION_BLOCKS + PADDING, index, block_size, z,2);
+                    break;
+                case 3:
+                    decode_plane(matrix, conf, data, buf, 4 * REGION_BLOCKS + PADDING, index, block_size, z,3);
+                    break;
+                case 4:
+                    decode_plane(matrix, conf, data, buf, 4 * REGION_BLOCKS + PADDING, index, block_size, z,4);
+                    break;
+                default:
+                    decode_plane(matrix, conf, data, buf, 4 * REGION_BLOCKS + PADDING, index, block_size, z,matrix->erase_cnt);
+            }
             break;
         case 8:
-            decode_plane(matrix, conf, data, buf, conf->alpha * REGION_BLOCKS, index, block_size, z,8);
+            switch (matrix->erase_cnt){
+                case 1:
+                    decode_plane(matrix, conf, data, buf, 8 * REGION_BLOCKS + PADDING, index, block_size, z,1);
+                    break;
+                case 2:
+                    decode_plane(matrix, conf, data, buf, 8 * REGION_BLOCKS + PADDING, index, block_size, z,2);
+                    break;
+                case 3:
+                    decode_plane(matrix, conf, data, buf, 8 * REGION_BLOCKS + PADDING, index, block_size, z,3);
+                    break;
+                case 4:
+                    decode_plane(matrix, conf, data, buf, 8 * REGION_BLOCKS + PADDING, index, block_size, z,4);
+                    break;
+                default:
+                    decode_plane(matrix, conf, data, buf, 8 * REGION_BLOCKS + PADDING, index, block_size, z,matrix->erase_cnt);
+            }
+            break;
+        case 9:
+            switch (matrix->erase_cnt){
+                case 1:
+                    decode_plane(matrix, conf, data, buf, 9 * REGION_BLOCKS + PADDING, index, block_size, z,1);
+                    break;
+                case 2:
+                    decode_plane(matrix, conf, data, buf, 9 * REGION_BLOCKS + PADDING, index, block_size, z,2);
+                    break;
+                case 3:
+                    decode_plane(matrix, conf, data, buf, 9 * REGION_BLOCKS + PADDING, index, block_size, z,3);
+                    break;
+                case 4:
+                    decode_plane(matrix, conf, data, buf, 9 * REGION_BLOCKS + PADDING, index, block_size, z,4);
+                    break;
+                default:
+                    decode_plane(matrix, conf, data, buf, 9 * REGION_BLOCKS + PADDING, index, block_size, z,matrix->erase_cnt);
+            }
+            break;
+        case 16:
+            switch (matrix->erase_cnt){
+                case 1:
+                    decode_plane(matrix, conf, data, buf, 16 * REGION_BLOCKS + PADDING, index, block_size, z,1);
+                    break;
+                case 2:
+                    decode_plane(matrix, conf, data, buf, 16 * REGION_BLOCKS + PADDING, index, block_size, z,2);
+                    break;
+                case 3:
+                    decode_plane(matrix, conf, data, buf, 16 * REGION_BLOCKS + PADDING, index, block_size, z,3);
+                    break;
+                case 4:
+                    decode_plane(matrix, conf, data, buf, 16 * REGION_BLOCKS + PADDING, index, block_size, z,4);
+                    break;
+                default:
+                    decode_plane(matrix, conf, data, buf, 16 * REGION_BLOCKS + PADDING, index, block_size, z,matrix->erase_cnt);
+            }
+            break;
+        case 27:
+            switch (matrix->erase_cnt){
+                case 1:
+                    decode_plane(matrix, conf, data, buf, 27 * REGION_BLOCKS + PADDING, index, block_size, z,1);
+                    break;
+                case 2:
+                    decode_plane(matrix, conf, data, buf, 27 * REGION_BLOCKS + PADDING, index, block_size, z,2);
+                    break;
+                case 3:
+                    decode_plane(matrix, conf, data, buf, 27 * REGION_BLOCKS + PADDING, index, block_size, z,3);
+                    break;
+                case 4:
+                    decode_plane(matrix, conf, data, buf, 27 * REGION_BLOCKS + PADDING, index, block_size, z,4);
+                    break;
+                default:
+                    decode_plane(matrix, conf, data, buf, 27 * REGION_BLOCKS + PADDING, index, block_size, z,matrix->erase_cnt);
+            }
+            break;
+        case 64:
+            switch (matrix->erase_cnt){
+                case 1:
+                    decode_plane(matrix, conf, data, buf, 64 * REGION_BLOCKS + PADDING, index, block_size, z,1);
+                    break;
+                case 2:
+                    decode_plane(matrix, conf, data, buf, 64 * REGION_BLOCKS + PADDING, index, block_size, z,2);
+                    break;
+                case 3:
+                    decode_plane(matrix, conf, data, buf, 64 * REGION_BLOCKS + PADDING, index, block_size, z,3);
+                    break;
+                case 4:
+                    decode_plane(matrix, conf, data, buf, 64 * REGION_BLOCKS + PADDING, index, block_size, z,4);
+                    break;
+                default:
+                    decode_plane(matrix, conf, data, buf, 64 * REGION_BLOCKS + PADDING, index, block_size, z,matrix->erase_cnt);
+            }
+            break;
+        case 81:
+            switch (matrix->erase_cnt){
+                case 1:
+                    decode_plane(matrix, conf, data, buf, 81 * REGION_BLOCKS + PADDING, index, block_size, z,1);
+                    break;
+                case 2:
+                    decode_plane(matrix, conf, data, buf, 81 * REGION_BLOCKS + PADDING, index, block_size, z,2);
+                    break;
+                case 3:
+                    decode_plane(matrix, conf, data, buf, 81 * REGION_BLOCKS + PADDING, index, block_size, z,3);
+                    break;
+                case 4:
+                    decode_plane(matrix, conf, data, buf, 81 * REGION_BLOCKS + PADDING, index, block_size, z,4);
+                    break;
+                default:
+                    decode_plane(matrix, conf, data, buf, 81 * REGION_BLOCKS + PADDING, index, block_size, z,matrix->erase_cnt);
+            }
+            break;
+        case 256:
+            switch (matrix->erase_cnt){
+                case 1:
+                    decode_plane(matrix, conf, data, buf, 256 * REGION_BLOCKS + PADDING, index, block_size, z,1);
+                    break;
+                case 2:
+                    decode_plane(matrix, conf, data, buf, 256 * REGION_BLOCKS + PADDING, index, block_size, z,2);
+                    break;
+                case 3:
+                    decode_plane(matrix, conf, data, buf, 256 * REGION_BLOCKS + PADDING, index, block_size, z,3);
+                    break;
+                case 4:
+                    decode_plane(matrix, conf, data, buf, 256 * REGION_BLOCKS + PADDING, index, block_size, z,4);
+                    break;
+                default:
+                    decode_plane(matrix, conf, data, buf, 256 * REGION_BLOCKS + PADDING, index, block_size, z,matrix->erase_cnt);
+            }
             break;
         default:
-            decode_plane(matrix, conf, data, buf, conf->alpha * REGION_BLOCKS, index, block_size, z,matrix->erase_cnt);
+            switch (matrix->erase_cnt){
+                case 1:
+                    decode_plane(matrix, conf, data, buf, conf->alpha * REGION_BLOCKS + PADDING, index, block_size, z,1);
+                    break;
+                case 2:
+                    decode_plane(matrix, conf, data, buf, conf->alpha * REGION_BLOCKS + PADDING, index, block_size, z,2);
+                    break;
+                case 3:
+                    decode_plane(matrix, conf, data, buf, conf->alpha * REGION_BLOCKS + PADDING, index, block_size, z,3);
+                    break;
+                case 4:
+                    decode_plane(matrix, conf, data, buf, conf->alpha * REGION_BLOCKS + PADDING, index, block_size, z,4);
+                    break;
+                default:
+                    decode_plane(matrix, conf, data, buf, conf->alpha * REGION_BLOCKS + PADDING, index, block_size, z,matrix->erase_cnt);
+            }
+            break;
 
     }
 }
@@ -336,6 +497,8 @@ static inline void write_plane(const msr_encode_matrix* matrix, const msr_conf *
     }
 }
 
+
+
 void msr_encode(int len, const msr_encode_matrix* matrix, const msr_conf *conf, uint8_t *buf, uint8_t **data, uint8_t **output){
     int z = 0,s = 0;
 
@@ -343,7 +506,7 @@ void msr_encode(int len, const msr_encode_matrix* matrix, const msr_conf *conf, 
 
     assert(len % (conf->alpha * REGION_SIZE) == 0);
 
-    memset(buf,0,conf->alpha * REGION_SIZE * matrix->erase_cnt * sizeof(uint8_t));
+    memset(buf,0,conf->coding_unit_size * matrix->erase_cnt * sizeof(uint8_t));
 
     encode_t *input_ptr[conf->n];
     encode_t *buf_ptr = (encode_t *)buf;
@@ -356,21 +519,22 @@ void msr_encode(int len, const msr_encode_matrix* matrix, const msr_conf *conf, 
         input_ptr[i] = (encode_t *) data[i];
     }
 
-    for(int index = 0; index < block_size; index++) {
+    for (int index = 0; index < block_size; index++) {
         s = 0;
         while (s <= matrix->sigma_max) {
             for (z = 0; z < conf->alpha; z++) {
                 if (matrix->sigmas[z] == s) {
-                    fast_decode_plane(matrix, conf, input_ptr, buf_ptr, conf->alpha * REGION_BLOCKS, index, block_size, z);
+                    super_fast_decode_plane(matrix, conf, input_ptr, buf_ptr, index, block_size, z);
                 }
             }
 
             for (z = 0; z < conf->alpha; z++) {
                 if (matrix->sigmas[z] == s) {
-                    write_plane(matrix, conf, input_ptr , buf_ptr, conf->alpha * REGION_BLOCKS, index, block_size, z);
+                    write_plane(matrix, conf, input_ptr, buf_ptr, conf->alpha * REGION_BLOCKS + PADDING, index, block_size, z);
                 }
             }
             s++;
         }
     }
 }
+

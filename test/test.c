@@ -83,7 +83,14 @@ int main(int argc, char **argv) {
         msr_fill_encode_matrix(&matrix,&conf,input);
         msr_encode(DATA_SIZE/k,&matrix,&conf,buf,input,memory_pre_allocated);
 
-
+/*
+        for (int i = 0; i < n; i++) {
+            printf("Decoded %d: ", i);
+            for (int s = 0; s < 8; s++)
+                printf("%x ", input[i][s]);
+            printf("\n");
+        }
+*/
         for(int j=0;j<n;j++)
             assert(!memcmp(input[j],data[j],DATA_SIZE / k));
 
