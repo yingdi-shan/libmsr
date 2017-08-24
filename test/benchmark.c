@@ -18,18 +18,13 @@
 #define TEST_LOOP (10)
 
 int main(){
-
-
     for(int r=4;r<=4;r++) {
 
         int n = r * 3;
         int k = n - r;
 
-
         msr_conf conf;
         msr_init(&conf,n,k,valloc,free);
-
-
 
         uint8_t *data[n];
         uint8_t *memory_pre_allocated[k];
@@ -40,19 +35,18 @@ int main(){
             data[i] = NULL;
 
         for (int i = 0; i < n; i++) {
-            posix_memalign((void *) &(data[i]), 64, sizeof(uint8_t) * DATA_SIZE / k);
+            posix_memalign((void **) &(data[i]), 64, sizeof(uint8_t) * DATA_SIZE / k);
             //Warm the memory up.
             memset(data[i], 0xaa, sizeof(uint8_t) * DATA_SIZE / k);
         }
 
         for (int i = 0; i < r; i++) {
-            posix_memalign((void *) &(memory_pre_allocated[i]), 64, sizeof(uint8_t) * DATA_SIZE / k);
+            posix_memalign((void **) &(memory_pre_allocated[i]), 64, sizeof(uint8_t) * DATA_SIZE / k);
             //Warm the memory up.
             memset(memory_pre_allocated[i], 0x00, sizeof(uint8_t) * DATA_SIZE / k);
         }
 
-        uint8_t *buf ;
-        posix_memalign((void **)&buf,64,r * conf.coding_unit_size * sizeof(uint8_t));
+
 
         clock_t start = clock();
 
@@ -60,10 +54,14 @@ int main(){
             for (int i = 0; i < r; i++)
                 data[i + k] = NULL;
 
-            msr_encode_matrix matrix;
-            msr_fill_encode_matrix(&matrix,&conf,data);
+            msr_encode_context context;
+            msr_fill_encode_context(&context, &conf, data);
 
-            msr_encode(DATA_SIZE/k,&matrix,&conf,buf,data,memory_pre_allocated);
+            uint8_t *buf ;
+            posix_memalign((void **)&buf,64, context.encoding_buf_size * sizeof(uint8_t));
+
+            msr_encode(DATA_SIZE/k,&context,&conf,buf,data,memory_pre_allocated);
+            free(buf);
         }
 
         printf("Total Clock Time: %.2fs\n", (clock() - start) / (double) CLOCKS_PER_SEC);
@@ -83,9 +81,14 @@ int main(){
                     broken++;
                 }
             }
-            msr_encode_matrix matrix;
-            msr_fill_encode_matrix(&matrix,&conf,data);
-            msr_encode(DATA_SIZE/k,&matrix,&conf,buf,data,memory_pre_allocated);
+            msr_encode_context context;
+            msr_fill_encode_context(&context, &conf, data);
+
+            uint8_t *buf ;
+            posix_memalign((void **)&buf,64, context.encoding_buf_size * sizeof(uint8_t));
+
+            msr_encode(DATA_SIZE/k,&context,&conf,buf,data,memory_pre_allocated);
+            free(buf);
         }
 
         printf("Total Clock Time: %.2fs\n", (clock() - start) / (double) CLOCKS_PER_SEC);

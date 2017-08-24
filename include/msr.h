@@ -17,20 +17,20 @@ struct msr_conf_t{
     int beta;
     int groups;
 
-    size_t coding_unit_size;
-
     void* (*allocate)(size_t);
     void (*deallocate)(void *);
 
-    //Private, should not be modified.
     uint8_t *node_companion;
     uint8_t *z_companion;
     uint8_t *theta;
+
+    int nodes_round_up;
 };
 
 typedef struct msr_conf_t msr_conf;
 
-struct msr_encode_matrix_t{
+struct msr_encode_context_t{
+    size_t encoding_buf_size;
 
     uint8_t *matrix;
 
@@ -46,12 +46,31 @@ struct msr_encode_matrix_t{
 
     int *sigmas;
     int sigma_max;
+
 };
 
-typedef struct msr_encode_matrix_t msr_encode_matrix;
+typedef struct msr_encode_context_t msr_encode_context;
+
+struct msr_regenerate_context_t{
+    size_t regenerate_buf_size;
+
+    uint8_t *matrix;
+    uint8_t *u_matrix;
+
+    int broken;
+
+    int *z_num;
+    int *z_pos;
+    int *z_comp_pos;
 
 
-void msr_fill_encode_matrix(msr_encode_matrix *matrix, const msr_conf *conf, uint8_t **data);
+};
+
+typedef struct msr_regenerate_context_t msr_regenerate_context;
+
+
+void msr_fill_encode_context(msr_encode_context *context, const msr_conf *conf, uint8_t **data);
+void msr_fill_regenerate_context(msr_regenerate_context *context, const msr_conf *conf, int broken);
 
 /**@brief Fill the unavailable data.
  * @param len Length of each block of data. len should be at least 512 * alpha.
@@ -61,7 +80,7 @@ void msr_fill_encode_matrix(msr_encode_matrix *matrix, const msr_conf *conf, uin
  * @param output Array of pointers to the output memory.
  * @returns none
  */
-void msr_encode(int len, const msr_encode_matrix* matrix, const msr_conf *conf, uint8_t *buf, uint8_t **data, uint8_t **output);
+void msr_encode(int len, const msr_encode_context* context, const msr_conf *conf, uint8_t *buf, uint8_t **data, uint8_t **output);
 
 /**@brief Regenerate the unavailable data.
  * @param len Length of each block of data. len should be the length of collected data.
@@ -71,7 +90,9 @@ void msr_encode(int len, const msr_encode_matrix* matrix, const msr_conf *conf, 
  * @param output The address to the regenerated data.
  * @returns none
  */
-void msr_regenerate(int len, msr_conf *conf, uint8_t **input, uint8_t *output);
+void msr_regenerate(int len, const msr_regenerate_context *context, const msr_conf *conf, uint8_t *buf, uint8_t **data, uint8_t *output);
+
+void msr_get_regenerate_offset(int len, const msr_regenerate_context *context, const msr_conf *conf, int *offsets);
 
 
 int msr_init(msr_conf *conf,int n,int k,void* (*allocate)(size_t),void (*deallocate)(void *));

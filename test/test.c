@@ -13,7 +13,8 @@
 const int n = 14;
 const int k = 10;
 
-#define DATA_SIZE k * (1 << 22)
+#define DATA_SIZE (k * (1 << 22))
+#define REGION_SIZE 512
 
 int main(int argc, char **argv) {
     srand(time(0));
@@ -32,20 +33,23 @@ int main(int argc, char **argv) {
     for(int i=0;i<k;i++) {
         posix_memalign((void **)&data[i],64,sizeof(uint8_t) * DATA_SIZE / k);
         for(int j=0;j<DATA_SIZE/k;j++)
-            data[i][j] = (uint8_t)(rand() & 0xff);
+            //data[i][j] = (uint8_t)(rand() & 0xff);
+            data[i][j] = 0xaa;
     }
 
     for(int i=0;i<r;i++) {
         posix_memalign((void **)&memory_pre_allocated[i],64,sizeof(uint8_t) * DATA_SIZE / k);
     }
 
-    msr_encode_matrix matrix;
-    msr_fill_encode_matrix(&matrix,&conf,data);
+    msr_encode_context context;
+    msr_fill_encode_context(&context, &conf, data);
+
 
     uint8_t *buf ;
-    posix_memalign((void **)&buf,64,r * conf.coding_unit_size * sizeof(uint8_t));
+    posix_memalign((void **)&buf,64,context.encoding_buf_size * sizeof(uint8_t));
 
-    msr_encode(DATA_SIZE/k,&matrix,&conf,buf,data,memory_pre_allocated);
+    msr_encode(DATA_SIZE/k,&context,&conf,buf,data,memory_pre_allocated);
+
 
     for (int i = 0; i < n; i++) {
         printf("Original %d: ", i);
@@ -56,7 +60,7 @@ int main(int argc, char **argv) {
 
 
     printf("-----------Begin to test decode-----------\n");
-    int test_turn = 100;
+    int test_turn = 10;
 
     for (int t = 0; t < test_turn; t++) {
         printf("Turn %d:\n", t);
@@ -79,18 +83,13 @@ int main(int argc, char **argv) {
         }
 
 
-        msr_encode_matrix matrix;
-        msr_fill_encode_matrix(&matrix,&conf,input);
-        msr_encode(DATA_SIZE/k,&matrix,&conf,buf,input,memory_pre_allocated);
+        msr_encode_context context;
+        msr_fill_encode_context(&context, &conf, input);
 
-/*
-        for (int i = 0; i < n; i++) {
-            printf("Decoded %d: ", i);
-            for (int s = 0; s < 8; s++)
-                printf("%x ", input[i][s]);
-            printf("\n");
-        }
-*/
+
+        msr_encode(DATA_SIZE/k,&context,&conf,buf,input,memory_pre_allocated);
+
+
         for(int j=0;j<n;j++)
             assert(!memcmp(input[j],data[j],DATA_SIZE / k));
 
@@ -103,22 +102,30 @@ int main(int argc, char **argv) {
     }
 
 
-    /*
+
     printf("-----------Begin to test regenerate-----------\n");
     test_turn = n;
+
+
     for (int i = 0; i < test_turn; i++) {
-        int id = i;
-        int y_0 = id / q;
-        int x_0 = id % q;
+
+
+        msr_regenerate_context context;
+        msr_fill_regenerate_context(&context,&conf,i);
+
+        uint8_t *buf;
+
+        posix_memalign((void **)&buf,64,sizeof(uint8_t)* context.regenerate_buf_size);
+
         uint8_t *input[n];
+        int offsets[conf.beta];
+
+        msr_get_regenerate_offset(DATA_SIZE/k, &context, &conf, offsets);
         for (int j = 0; j < n; j++){
             if(j!=i){
-                posix_memalign((void *)(&input[j]),64,sizeof(uint8_t) * DATA_SIZE / k);
-                int total = _pow(q,t);
-                int len = _pow(q,t-1);
-                for(int z_id=0;z_id<len;z_id++){
-                    int z = (z_id / _pow(q, t - y_0 - 1) * q + x_0) * _pow(q, t - y_0 - 1) + z_id % _pow(q, t - y_0 - 1);
-                    memcpy(input[j] + z_id*DATA_SIZE/k/total,data[j] + z*DATA_SIZE/k/total,DATA_SIZE/k/total);
+                posix_memalign((void **)(&input[j]),64,sizeof(uint8_t) * DATA_SIZE / k / r);
+                for(int z=0;z<conf.beta;z++){
+                    memcpy(input[j] + DATA_SIZE/k/conf.alpha * z,data[j] + offsets[z], DATA_SIZE/k/conf.alpha * sizeof(uint8_t));
                 }
 
             }else
@@ -127,25 +134,29 @@ int main(int argc, char **argv) {
 
         uint8_t * memory;
 
-        posix_memalign((void *)(&memory),64,sizeof(uint8_t) * DATA_SIZE / k);
+        posix_memalign((void **)(&memory),64,sizeof(uint8_t) * DATA_SIZE / k);
 
-        msr_regenerate(DATA_SIZE/k/q,n,k,input,memory);
+        msr_regenerate(DATA_SIZE/k/r,&context,&conf,buf,input,memory);
+
+
 
         assert(!memcmp(memory,data[i],DATA_SIZE/k));
 
         printf("Check OK!\n");
 
         free(memory);
+
+
         for(int j=0;j<n;j++)
-            if(j!=i)
+            if(input[j] != NULL)
                 free(input[j]);
+
+        free(buf);
 
     }
 
     for(int i=0;i<n;i++)
         free(data[i]);
 
-     */
     return 0;
-
 }

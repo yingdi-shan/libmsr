@@ -54,10 +54,12 @@ static void init_arch() {
     mask_hi = _mm256_set1_epi8(0xf0);
 }
 
+__attribute__((always_inline))
 static inline encode_t xor_region(encode_t input1, encode_t input2) {
     return _mm256_xor_si256(input1, input2);
 }
 
+__attribute__((always_inline))
 static inline encode_t multiply_region(encode_t input, uint8_t x) {
 
     __m256i low = _mm256_and_si256(input, mask_lo);
@@ -73,15 +75,17 @@ static inline encode_t multiply_region(encode_t input, uint8_t x) {
     return _mm256_xor_si256(left, right);
 }
 
+__attribute__((always_inline))
 static inline encode_t zero(){
     return _mm256_setzero_si256();
 }
 
-
+__attribute__((always_inline))
 static void inline prefetch(const encode_t *src){
     _mm_prefetch(src,_MM_HINT_NTA);
 }
 
+__attribute__((always_inline))
 static void inline store(encode_t *dst,encode_t val){
     _mm256_stream_si256(dst,val);
 }
