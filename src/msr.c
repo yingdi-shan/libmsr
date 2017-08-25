@@ -220,24 +220,28 @@ void msr_fill_encode_context(msr_encode_context *context, const msr_conf *conf, 
     }
 
 
-    uint8_t * encode_matrix = conf->allocate(erased_cnt * erased_cnt * sizeof(uint8_t));
-    uint8_t * inv_matrix = conf->allocate(erased_cnt * erased_cnt * sizeof(uint8_t));
-    for (i = 0; i < erased_cnt; i++)
-        for (j = 0; j < erased_cnt; j++) {
-            encode_matrix[i * erased_cnt + j] = conf->theta[i * conf->nodes_round_up + context->erased[j]];
+    uint8_t * encode_matrix = conf->allocate(conf->r * conf->r * sizeof(uint8_t));
+    uint8_t * inv_matrix = conf->allocate(conf->r * conf->r * sizeof(uint8_t));
+
+    for (i = 0; i < conf->r; i++)
+        for (j = 0; j < conf->r; j++) {
+            if(j<erased_cnt)
+                encode_matrix[i * conf->r + j] = conf->theta[i * conf->nodes_round_up + context->erased[j]];
+            else
+                encode_matrix[i * conf->r + j] = conf->theta[i * conf->nodes_round_up + context->survived[j-erased_cnt]];
         }
 
-    inverse_matrix(encode_matrix,erased_cnt,inv_matrix);
+    inverse_matrix(encode_matrix,conf->r,inv_matrix);
 
-    context->matrix = conf->allocate(erased_cnt * conf->nodes_round_up * sizeof(uint8_t));
+    context->matrix = conf->allocate(conf->r * conf->nodes_round_up * sizeof(uint8_t));
 
-    memset(context->matrix, 0, erased_cnt * conf->nodes_round_up * sizeof(uint8_t));
+    memset(context->matrix, 0, conf->r * conf->nodes_round_up * sizeof(uint8_t));
 
 
-    for (i = 0; i < erased_cnt; i++)
+    for (i = 0; i < conf->r; i++)
         for (j = 0; j < conf->nodes_round_up; j++) {
-            for (int t = 0; t < erased_cnt; t++) {
-                context->matrix[i * conf->nodes_round_up + j] ^= gf_mul(inv_matrix[i * erased_cnt + t], conf->theta[t * conf->nodes_round_up + j]);
+            for (int t = 0; t < conf->r; t++) {
+                context->matrix[i * conf->nodes_round_up + j] ^= gf_mul(inv_matrix[i * conf->r + t], conf->theta[t * conf->nodes_round_up + j]);
             }
         }
 

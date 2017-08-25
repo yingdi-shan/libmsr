@@ -33,8 +33,7 @@ int main(int argc, char **argv) {
     for(int i=0;i<k;i++) {
         posix_memalign((void **)&data[i],64,sizeof(uint8_t) * DATA_SIZE / k);
         for(int j=0;j<DATA_SIZE/k;j++)
-            //data[i][j] = (uint8_t)(rand() & 0xff);
-            data[i][j] = 0xaa;
+            data[i][j] = (uint8_t)(rand() & 0xff);
     }
 
     for(int i=0;i<r;i++) {
@@ -60,7 +59,7 @@ int main(int argc, char **argv) {
 
 
     printf("-----------Begin to test decode-----------\n");
-    int test_turn = 10;
+    int test_turn = 100;
 
     for (int t = 0; t < test_turn; t++) {
         printf("Turn %d:\n", t);
@@ -70,7 +69,7 @@ int main(int argc, char **argv) {
             input[j] = NULL;
 
         //TODO: fix bug for all survivors.
-        int survive_cnt =  k;
+        int survive_cnt =  k + rand() % r;
 
         int ok_cnt = 0;
         while (ok_cnt < survive_cnt) {
@@ -111,7 +110,7 @@ int main(int argc, char **argv) {
 
 
     for (int i = 0; i < test_turn; i++) {
-
+        printf("Turn %d:\n", i);
 
         msr_regenerate_context context;
         msr_fill_regenerate_context(&context,&conf,i);
