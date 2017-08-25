@@ -101,5 +101,8 @@ void msr_get_regenerate_offset(int len, const msr_regenerate_context *context, c
 
 int msr_init(msr_conf *conf, int n, int k, void *(*allocate)(size_t), void (*deallocate)(void *));
 
+void msr_free_conf(msr_conf *conf);
+void msr_free_encode_context(const msr_conf *conf,msr_encode_context *context);
+void msr_free_regenerate_context(const msr_conf *conf,msr_regenerate_context *context);
 
 #endif //MSR_H

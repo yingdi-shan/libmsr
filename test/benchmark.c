@@ -11,31 +11,38 @@
 #include <mm_malloc.h>
 #include <malloc.h>
 
+const int n = 14;
+const int k = 10;
+
 
 #define REGION_SIZE 512
-#define STRIPE_SIZE (256 * 10)
-#define DATA_SIZE (  (1<<30) - ((1<<30)%(STRIPE_SIZE * REGION_SIZE)))
 
-#define TEST_LOOP (10)
+#define TEST_LOOP (1)
+
+
+
 
 int main() {
 
-    int r = 4;
-    int n = 14;
-    int k = n - r;
+    const int r = n - k;
 
     msr_conf conf;
     msr_init(&conf, n, k, malloc, free);
 
+    int stripe_size = k * conf.alpha * REGION_SIZE;
+
+    int DATA_SIZE = k * (1<<27);
+    DATA_SIZE-= DATA_SIZE%stripe_size;
+
     uint8_t *data[n];
-    uint8_t *memory_pre_allocated[k];
+    uint8_t *memory_pre_allocated[r];
 
     printf("n:%d r:%d\n", n, r);
 
     for (int i = 0; i < n; i++)
         data[i] = NULL;
 
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < k; i++) {
         posix_memalign((void **) &(data[i]), 64, sizeof(uint8_t) * DATA_SIZE / k);
         //Warm the memory up.
         memset(data[i], 0xaa, sizeof(uint8_t) * DATA_SIZE / k);
@@ -61,7 +68,9 @@ int main() {
         posix_memalign((void **) &buf, 64, context.encoding_buf_size * sizeof(uint8_t));
 
         msr_encode(DATA_SIZE / k, &context, &conf, buf, data, memory_pre_allocated);
+
         free(buf);
+        msr_free_encode_context(&conf,&context);
     }
 
     printf("Total Clock Time: %.2fs\n", (clock() - start) / (double) CLOCKS_PER_SEC);
@@ -73,22 +82,40 @@ int main() {
     start = clock();
 
     for (int loop = 0; loop < TEST_LOOP; loop++) {
-        int broken = 0;
-        while (broken < r) {
-            int i = rand() % n;
-            if (data[i]) {
-                data[i] = NULL;
-                broken++;
+
+        uint8_t *input[n];
+
+        for (int j = 0; j < n; j++)
+            input[j] = NULL;
+
+        int survive_cnt =  k;
+
+        int ok_cnt = 0;
+        while (ok_cnt < survive_cnt) {
+            int ok_id = rand() % n;
+            if (!input[ok_id]) {
+                input[ok_id] = data[ok_id];
+                ok_cnt++;
             }
         }
         msr_encode_context context;
-        msr_fill_encode_context(&context, &conf, data);
+        msr_fill_encode_context(&context, &conf, input);
+
+        for(int i=0;i<r;i++) {
+            posix_memalign((void *)&(memory_pre_allocated[i]),64,sizeof(uint8_t) * DATA_SIZE / k);
+        }
 
         uint8_t *buf;
         posix_memalign((void **) &buf, 64, context.encoding_buf_size * sizeof(uint8_t));
 
-        msr_encode(DATA_SIZE / k, &context, &conf, buf, data, memory_pre_allocated);
+        msr_encode(DATA_SIZE / k, &context, &conf, buf, input, memory_pre_allocated);
+
+        for(int i=0;i<r;i++) {
+           free(memory_pre_allocated[i]);
+        }
+
         free(buf);
+        msr_free_encode_context(&conf,&context);
     }
 
     printf("Total Clock Time: %.2fs\n", (clock() - start) / (double) CLOCKS_PER_SEC);
@@ -139,11 +166,18 @@ int main() {
            TEST_LOOP * (double) DATA_SIZE / k / ((clock() - start) / (double) CLOCKS_PER_SEC) * 1e-6);
 
     free(memory);
+    free(buf);
 
+
+    msr_free_regenerate_context(&conf,&context);
     for (int j = 0; j < n; j++)
         if (input[j] != NULL)
             free(input[j]);
 
-    free(buf);
+
+    for (int j = 0; j < n; j++)
+        free(data[j]);
+
+    msr_free_conf(&conf);
 
 }

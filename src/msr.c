@@ -351,7 +351,7 @@ decode_plane(const msr_encode_context *context, const msr_conf *conf, encode_t *
 
 
         if (node_id < conf->n) {
-            if (companion < conf->n && companion != node_id) {
+            if (companion < conf->n && companion != node_id && data[companion]) {
                 int new_z = conf->z_companion[node_id * conf->alpha + z];
                 int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
 
@@ -378,7 +378,7 @@ decode_plane(const msr_encode_context *context, const msr_conf *conf, encode_t *
                 }
             }
         } else {
-            if (companion < conf->n && companion != node_id) {
+            if (companion < conf->n && data[companion] && companion != node_id) {
                 int new_z = conf->z_companion[node_id * conf->alpha + z];
                 int new_z_index = (block_size * new_z + index) * REGION_BLOCKS;
 
@@ -388,8 +388,6 @@ decode_plane(const msr_encode_context *context, const msr_conf *conf, encode_t *
                         buf[e * buf_len + z * REGION_BLOCKS + w] = xor_region(buf[e * buf_len + z * REGION_BLOCKS + w],
                                                                               multiply_region(a_cur, matrix_tmp[e]));
                     }
-                    prefetch(&data[new_node][z_index + w]);
-                    prefetch(&data[new_comp][new_comp_z_index + w]);
                 }
             }
         }
@@ -779,12 +777,14 @@ void msr_regenerate(int len, const msr_regenerate_context *context, const msr_co
 
     memset(buf, 0, sizeof(uint8_t) * context->regenerate_buf_size);
 
+
     for (int index = 0; index < block_size; index++) {
         for (int z_id = 0; z_id < conf->beta; z_id++) {
             super_fast_regenerate_plane(context, conf, input_ptr, buf_ptr, index, block_size, z_id);
             write_regenerate_plane(context, conf, output_ptr, buf_ptr, index, block_size, z_id, conf->r);
         }
     }
+
 
 }
 
@@ -797,4 +797,25 @@ void msr_get_regenerate_offset(int len, const msr_regenerate_context *context, c
                 i % ipow(conf->r, conf->groups - y0 - 1);
         offsets[i] = len / conf->alpha * z;
     }
+}
+
+void msr_free_conf(msr_conf *conf){
+    conf->deallocate(conf->theta);
+    conf->deallocate(conf->node_companion);
+    conf->deallocate(conf->z_companion);
+}
+void msr_free_encode_context(const msr_conf *conf,msr_encode_context *context){
+    conf->deallocate(context->survived);
+    conf->deallocate(context->is_erased);
+    conf->deallocate(context->matrix);
+    conf->deallocate(context->erase_id);
+    conf->deallocate(context->erased);
+    conf->deallocate(context->sigmas);
+}
+void msr_free_regenerate_context(const msr_conf *conf,msr_regenerate_context *context){
+    conf->deallocate(context->matrix);
+    conf->deallocate(context->z_pos);
+    conf->deallocate(context->z_num);
+    conf->deallocate(context->z_comp_pos);
+    conf->deallocate(context->u_matrix);
 }

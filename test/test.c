@@ -49,6 +49,8 @@ int main(int argc, char **argv) {
 
     msr_encode(DATA_SIZE/k,&context,&conf,buf,data,memory_pre_allocated);
 
+    msr_free_encode_context(&conf,&context);
+
 
     for (int i = 0; i < n; i++) {
         printf("Original %d: ", i);
@@ -68,7 +70,6 @@ int main(int argc, char **argv) {
         for (int j = 0; j < n; j++)
             input[j] = NULL;
 
-        //TODO: fix bug for all survivors.
         int survive_cnt =  k + rand() % r;
 
         int ok_cnt = 0;
@@ -85,11 +86,11 @@ int main(int argc, char **argv) {
         }
 
 
-        msr_encode_context context;
-        msr_fill_encode_context(&context, &conf, input);
+        msr_encode_context encode_context;
+        msr_fill_encode_context(&encode_context, &conf, input);
 
 
-        msr_encode(DATA_SIZE/k,&context,&conf,buf,input,memory_pre_allocated);
+        msr_encode(DATA_SIZE/k,&encode_context,&conf,buf,input,memory_pre_allocated);
 
 
         for(int j=0;j<n;j++)
@@ -101,7 +102,11 @@ int main(int argc, char **argv) {
             free(memory_pre_allocated[i]);
         }
 
+        msr_free_encode_context(&conf,&encode_context);
+
     }
+
+    free(buf);
 
 
 
@@ -112,17 +117,17 @@ int main(int argc, char **argv) {
     for (int i = 0; i < test_turn; i++) {
         printf("Turn %d:\n", i);
 
-        msr_regenerate_context context;
-        msr_fill_regenerate_context(&context,&conf,i);
+        msr_regenerate_context regenerate_context;
+        msr_fill_regenerate_context(&regenerate_context,&conf,i);
 
-        uint8_t *buf;
+        uint8_t *regenerate_buf;
 
-        posix_memalign((void **)&buf,64,sizeof(uint8_t)* context.regenerate_buf_size);
+        posix_memalign((void **)&regenerate_buf,64,sizeof(uint8_t)* regenerate_context.regenerate_buf_size);
 
         uint8_t *input[n];
         int offsets[conf.beta];
 
-        msr_get_regenerate_offset(DATA_SIZE/k, &context, &conf, offsets);
+        msr_get_regenerate_offset(DATA_SIZE/k, &regenerate_context, &conf, offsets);
         for (int j = 0; j < n; j++){
             if(j!=i){
                 posix_memalign((void **)(&input[j]),64,sizeof(uint8_t) * DATA_SIZE / k / r);
@@ -138,7 +143,7 @@ int main(int argc, char **argv) {
 
         posix_memalign((void **)(&memory),64,sizeof(uint8_t) * DATA_SIZE / k);
 
-        msr_regenerate(DATA_SIZE/k/r,&context,&conf,buf,input,memory);
+        msr_regenerate(DATA_SIZE/k/r,&regenerate_context,&conf,regenerate_buf,input,memory);
 
 
 
@@ -153,12 +158,15 @@ int main(int argc, char **argv) {
             if(input[j] != NULL)
                 free(input[j]);
 
-        free(buf);
+        free(regenerate_buf);
+        msr_free_regenerate_context(&conf,&regenerate_context);
 
     }
 
     for(int i=0;i<n;i++)
         free(data[i]);
+
+    msr_free_conf(&conf);
 
     return 0;
 }
