@@ -69,8 +69,11 @@ int main(int argc, char **argv) {
         for (int j = 0; j < n; j++)
             input[j] = NULL;
 
+        //TODO: fix bug for all survivors.
+        int survive_cnt =  k;
+
         int ok_cnt = 0;
-        while (ok_cnt < k) {
+        while (ok_cnt < survive_cnt) {
             int ok_id = rand() % n;
             if (!input[ok_id]) {
                 input[ok_id] = data[ok_id];

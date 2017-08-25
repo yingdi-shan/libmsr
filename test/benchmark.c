@@ -11,8 +11,9 @@
 #include <mm_malloc.h>
 #include <malloc.h>
 
-#define STRIPE_SIZE ((1<<12) * 27)
+
 #define REGION_SIZE 512
+#define STRIPE_SIZE (256 * 10)
 #define DATA_SIZE (  (1<<30) - ((1<<30)%(STRIPE_SIZE * REGION_SIZE)))
 
 #define TEST_LOOP (10)
@@ -20,11 +21,11 @@
 int main(){
     for(int r=4;r<=4;r++) {
 
-        int n = r * 3;
+        int n = 14;
         int k = n - r;
 
         msr_conf conf;
-        msr_init(&conf,n,k,valloc,free);
+        msr_init(&conf,n,k,malloc,free);
 
         uint8_t *data[n];
         uint8_t *memory_pre_allocated[k];
@@ -96,37 +97,41 @@ int main(){
         printf("Decode Throughput: %.2fMB/s\n",
                TEST_LOOP * (double) DATA_SIZE / k * n / ((clock() - start) / (double) CLOCKS_PER_SEC) * 1e-6);
 
-        /*
 
         int error = 1;
 
-        int y_0 = error / q;
-        int x_0 = error % q;
+        msr_regenerate_context context;
+        msr_fill_regenerate_context(&context,&conf,error);
+
+        uint8_t *buf;
+
+        posix_memalign((void **)&buf,64,sizeof(uint8_t)* context.regenerate_buf_size);
+
         uint8_t *input[n];
-        for (int j = 0; j < n; j++) {
-            if (j != error) {
-                posix_memalign((void *) (&input[j]), 64, sizeof(uint8_t) * DATA_SIZE / k);
-                int total = _pow(q, t);
-                int len = _pow(q, t - 1);
-                for (int z_id = 0; z_id < len; z_id++) {
-                    int z = (z_id / _pow(q, t - y_0 - 1) * q + x_0) * _pow(q, t - y_0 - 1) +
-                            z_id % _pow(q, t - y_0 - 1);
-                    memcpy(input[j] + z_id * (DATA_SIZE / k / total), data[j] + z * (DATA_SIZE / k / total),
-                           DATA_SIZE / k / total);
+        int offsets[conf.beta];
+
+        msr_get_regenerate_offset(DATA_SIZE/k, &context, &conf, offsets);
+
+
+        for (int j = 0; j < n; j++){
+            if(j!=error){
+                posix_memalign((void **)(&input[j]),64,sizeof(uint8_t) * DATA_SIZE / k / r);
+                for(int z=0;z<conf.beta;z++){
+                    memcpy(input[j] + DATA_SIZE/k/conf.alpha * z,data[j] + offsets[z], DATA_SIZE/k/conf.alpha * sizeof(uint8_t));
                 }
 
-            } else
+            }else
                 input[j] = NULL;
         }
 
-        uint8_t *memory;
+        uint8_t * memory;
 
-        posix_memalign((void *) (&memory), 64, sizeof(uint8_t) * DATA_SIZE / k);
-        memset(memory, 0, DATA_SIZE / k);
+        posix_memalign((void **)(&memory),64,sizeof(uint8_t) * DATA_SIZE / k);
 
         start = clock();
+
         for (int i = 0; i < TEST_LOOP; i++)
-            msr_regenerate(DATA_SIZE / k / q, n, k, input, memory);
+            msr_regenerate(DATA_SIZE/k/r,&context,&conf,buf,input,memory);
 
         printf("Total Clock Time: %.2fs\n", (clock() - start) / (double) CLOCKS_PER_SEC);
 
@@ -134,7 +139,12 @@ int main(){
                TEST_LOOP * (double) DATA_SIZE / k / ((clock() - start) / (double) CLOCKS_PER_SEC) * 1e-6);
 
         free(memory);
-         */
+
+        for(int j=0;j<n;j++)
+            if(input[j] != NULL)
+                free(input[j]);
+
+        free(buf);
 
     }
 }

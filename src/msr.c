@@ -137,6 +137,7 @@ static int compute_sigma(int z, const int *errors, int error_cnt, int r, int gro
 }
 
 int msr_init(msr_conf *conf, int n, int k,void* (*allocator)(size_t),void (*deallocator)(void *)) {
+
     int r = n - k;
 
     if (r <= 1 || r > k || n >= GF_SIZE - 1) {
@@ -176,8 +177,10 @@ void msr_fill_encode_context(msr_encode_context *context, const msr_conf *conf, 
     int erased_cnt = 0;
     int i,j,z;
 
-    context->is_erased = conf->allocate(conf->n * sizeof(bool));
+    context->is_erased = conf->allocate(conf->nodes_round_up * sizeof(bool));
     context->erase_id = conf->allocate(conf->n * sizeof(int));
+
+    memset(context->is_erased,0,conf->nodes_round_up * sizeof(bool));
 
     for(i=0;i<conf->n;i++)
         if(survived[i] == NULL)
@@ -310,8 +313,7 @@ void msr_fill_regenerate_context(msr_regenerate_context *context, const msr_conf
 
 __attribute__((always_inline))
 static inline void decode_plane(const msr_encode_context* context, const msr_conf *conf, encode_t **data, encode_t *buf, size_t buf_len, int index, int block_size, int z, int erase_cnt) {
-
-    int i,j = 0,e;
+    int j = 0,e;
     uint8_t *matrix_ptr = context->matrix;
 
 
@@ -325,6 +327,12 @@ static inline void decode_plane(const msr_encode_context* context, const msr_con
         int new_comp = conf->node_companion[context->survived[j+1] * conf->alpha + z];
         int new_comp_z = conf->z_companion[context->survived[j+1] * conf->alpha + z];
         int new_comp_z_index = (block_size * new_comp_z + index) * REGION_BLOCKS;
+
+        if(new_comp >= conf->n)
+            new_comp = 0;
+
+        if(new_node>= conf->n)
+            new_node = 0;
 
         uint8_t matrix_tmp[erase_cnt];
         for(e = 0; e< erase_cnt; e++)
@@ -631,6 +639,25 @@ static inline void regenerate_plane(const msr_regenerate_context *context, const
 }
 
 __attribute__((always_inline))
+static inline void super_fast_regenerate_plane(const msr_regenerate_context* context, const msr_conf *conf, encode_t **data, encode_t *buf, int index, int block_size, int z) {
+    switch(conf->r){
+        case 2:
+            regenerate_plane(context,conf,data,buf,index,block_size,z,2);
+            break;
+        case 3:
+            regenerate_plane(context,conf,data,buf,index,block_size,z,3);
+            break;
+        case 4:
+            regenerate_plane(context,conf,data,buf,index,block_size,z,4);
+            break;
+        default:
+            regenerate_plane(context,conf,data,buf,index,block_size,z,conf->r);
+    }
+
+}
+
+
+__attribute__((always_inline))
 static inline void write_regenerate_plane(const msr_regenerate_context *context, const msr_conf *conf, encode_t *output, encode_t *buf, int index, int block_size, int z_id, int r){
     int j;
     int y0 = context->broken / conf->r;
@@ -701,7 +728,7 @@ void msr_regenerate(int len, const msr_regenerate_context *context, const msr_co
 
     for (int index = 0; index < block_size; index++){
         for (int z_id = 0; z_id < conf->beta; z_id++){
-            regenerate_plane(context,conf,input_ptr,buf_ptr,index,block_size,z_id,conf->r);
+            super_fast_regenerate_plane(context,conf,input_ptr,buf_ptr,index,block_size,z_id);
             write_regenerate_plane(context,conf,output_ptr,buf_ptr,index,block_size,z_id,conf->r);
         }
     }
